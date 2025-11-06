@@ -34,7 +34,7 @@ export default function RootLayout({
         <SidebarProvider>
           <LayoutConditional>
             <LayoutWrapper layoutComponent={<Layout>{children}</Layout>}>
-              {children}
+        {children}
             </LayoutWrapper>
           </LayoutConditional>
         </SidebarProvider>
