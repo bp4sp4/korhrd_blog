@@ -26,6 +26,7 @@ async function getRecords(): Promise<TableData[]> {
     title: record.title,
     link: record.link,
     author: record.author || '',
+    specialNote: record.special_note || '',
   }));
 }
 

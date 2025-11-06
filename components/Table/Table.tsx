@@ -12,6 +12,7 @@ export interface TableData {
   title: string;
   link: string;
   author: string;
+  specialNote?: string;
 }
 
 interface TableProps {

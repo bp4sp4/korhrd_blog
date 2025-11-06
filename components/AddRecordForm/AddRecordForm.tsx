@@ -34,6 +34,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
     title: '',
     link: '',
     author: '',
+    specialNote: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -71,6 +72,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
         title: formData.title,
         link: formData.link,
         author: formData.author || null,
+        special_note: formData.specialNote || null,
       });
 
       if (insertError) throw insertError;
@@ -95,6 +97,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
         title: '',
         link: '',
         author: '',
+        specialNote: '',
       });
 
       router.refresh();
@@ -129,6 +132,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
       title: '',
       link: '',
       author: '',
+      specialNote: '',
     });
     setError('');
     setSuccess('');
@@ -248,6 +252,17 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
               required
             />
           </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>특이사항</label>
+            <input
+              type="text"
+              name="specialNote"
+              className={styles.input}
+              value={formData.specialNote}
+              onChange={handleChange}
+              placeholder="특이사항을 입력하세요"
+            />
+          </div>
         </div>
         {error && <div className={styles.error}>{error}</div>}
         {success && <div className={styles.success}>{success}</div>}
@@ -255,7 +270,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
           <button
             type="button"
             className={`${styles.button} ${styles.secondary}`}
-            onClick={() => {
+              onClick={() => {
               setFormData({
                 id: '',
                 field: '사회복지사',
@@ -265,6 +280,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
                 title: '',
                 link: '',
                 author: '',
+                specialNote: '',
               });
               setError('');
               setSuccess('');

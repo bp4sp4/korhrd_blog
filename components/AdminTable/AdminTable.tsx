@@ -34,6 +34,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
     searchVolume: '',
     title: '',
     author: '',
+    specialNote: '',
   });
   const [editingRecord, setEditingRecord] = useState<TableData | null>(null);
   const [editForm, setEditForm] = useState<Partial<TableData & { ranking: string | number; searchVolume: string | number }>>({});
@@ -67,6 +68,9 @@ export default function AdminTable({ initialData }: AdminTableProps) {
       if (filters.author && !item.author.toLowerCase().includes(filters.author.toLowerCase())) {
         return false;
       }
+      if (filters.specialNote && (!item.specialNote || !item.specialNote.toLowerCase().includes(filters.specialNote.toLowerCase()))) {
+        return false;
+      }
       return true;
     });
   }, [data, filters]);
@@ -91,8 +95,17 @@ export default function AdminTable({ initialData }: AdminTableProps) {
       searchVolume: '',
       title: '',
       author: '',
+      specialNote: '',
     });
     setCurrentPage(1);
+  };
+
+  // 메달 이미지 반환 함수
+  const getMedalImage = (ranking: number) => {
+    if (ranking === 1) return '/goldmedal.png';
+    if (ranking === 2) return '/silvermedal.png';
+    if (ranking === 3) return '/bronzemedal.png';
+    return null;
   };
 
   const handleEdit = (record: TableData) => {
@@ -147,15 +160,16 @@ export default function AdminTable({ initialData }: AdminTableProps) {
       const supabase = createClient();
       const { error: updateError } = await supabase
         .from('blog_records')
-        .update({
-          field: editForm.field,
-          keyword: editForm.keyword,
-          ranking: editForm.ranking ? parseInt(String(editForm.ranking)) : null,
-          search_volume: editForm.searchVolume ? parseInt(String(editForm.searchVolume)) : null,
-          title: editForm.title,
-          link: editForm.link,
-          author: editForm.author || null,
-        })
+            .update({
+              field: editForm.field,
+              keyword: editForm.keyword,
+              ranking: editForm.ranking ? parseInt(String(editForm.ranking)) : null,
+              search_volume: editForm.searchVolume ? parseInt(String(editForm.searchVolume)) : null,
+              title: editForm.title,
+              link: editForm.link,
+              author: editForm.author || null,
+              special_note: editForm.specialNote || null,
+            })
         .eq('id', editingRecord.id)
         .eq('keyword', editingRecord.keyword)
         .eq('title', editingRecord.title);
@@ -281,6 +295,16 @@ export default function AdminTable({ initialData }: AdminTableProps) {
               placeholder="작성자 검색"
             />
           </div>
+          <div className={styles.filterGroup}>
+            <label className={styles.filterLabel}>특이사항</label>
+            <input
+              type="text"
+              className={styles.filterInput}
+              value={filters.specialNote}
+              onChange={(e) => handleFilterChange('specialNote', e.target.value)}
+              placeholder="특이사항 검색"
+            />
+          </div>
         </div>
         <div className={styles.filterActions}>
           <button
@@ -309,6 +333,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                 <th>제목</th>
                 <th>링크</th>
                 <th>작성자</th>
+                <th>특이사항</th>
                 <th>작업</th>
               </tr>
             </thead>
@@ -319,7 +344,18 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                     <td>{item.id}</td>
                     <td>{item.field}</td>
                     <td>{item.keyword}</td>
-                    <td>{item.ranking}</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {item.ranking}
+                        {getMedalImage(item.ranking) && (
+                          <img
+                            src={getMedalImage(item.ranking) || ''}
+                            alt={`${item.ranking}위 메달`}
+                            style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                          />
+                        )}
+                      </div>
+                    </td>
                     <td>{item.searchVolume.toLocaleString()}</td>
                     <td>{item.title}</td>
                     <td>
@@ -333,6 +369,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                       </a>
                     </td>
                     <td>{item.author}</td>
+                    <td>{item.specialNote || '-'}</td>
                     <td>
                       <div className={styles.actionButtons}>
                         <button
@@ -353,7 +390,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyState}>
+                  <td colSpan={10} className={styles.emptyState}>
                     <p>검색 결과가 없습니다.</p>
                   </td>
                 </tr>
@@ -459,6 +496,16 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                   className={styles.input}
                   value={editForm.author || ''}
                   onChange={(e) => setEditForm({ ...editForm, author: e.target.value })}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>특이사항</label>
+                <input
+                  type="text"
+                  className={styles.input}
+                  value={editForm.specialNote || ''}
+                  onChange={(e) => setEditForm({ ...editForm, specialNote: e.target.value })}
+                  placeholder="특이사항을 입력하세요"
                 />
               </div>
             </div>
