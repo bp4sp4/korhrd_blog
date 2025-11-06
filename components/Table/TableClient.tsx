@@ -16,6 +16,7 @@ const FIELDS_EDIT = [
   '대졸자전형',
   '일반과정',
   '산업기사/기사',
+  '민간자격증',
 ];
 
 const FIELDS = [
@@ -29,6 +30,7 @@ const FIELDS = [
   '대졸자전형',
   '일반과정',
   '산업기사/기사',
+  '민간자격증',
 ];
 
 interface TableClientProps {
