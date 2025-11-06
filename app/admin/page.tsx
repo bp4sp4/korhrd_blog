@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { TableData } from '../components/Table/Table';
-import TableClient from '../components/Table/TableClient';
-import AddRecordForm from '../components/AddRecordForm/AddRecordForm';
-import UserInfo from '../components/UserInfo/UserInfo';
+import { TableData } from '@/components/Table/Table';
+import AdminTable from '@/components/AdminTable/AdminTable';
+import CreateUserForm from '@/components/CreateUserForm/CreateUserForm';
+import UserList from '@/components/UserList/UserList';
 
 async function getRecords(): Promise<TableData[]> {
   const supabase = await createClient();
@@ -29,47 +29,51 @@ async function getRecords(): Promise<TableData[]> {
   }));
 }
 
-async function getUserInfo() {
+async function getUsers() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-  let email: string | null = null;
-  let isAdmin = false;
-
-  if (user) {
-    email = user.email || null;
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_admin')
-      .eq('id', user.id)
-      .single();
-    isAdmin = profile?.is_admin || false;
+  if (error) {
+    console.error('Error fetching users:', error);
+    return [];
   }
 
-  return { email, isAdmin };
+  return data || [];
 }
 
-export default async function Home() {
+export default async function AdminPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 로그인하지 않은 사용자는 로그인 페이지로 리다이렉트
   if (!user) {
     redirect('/login');
   }
 
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single();
+
+  if (!profile?.is_admin) {
+    redirect('/');
+  }
+
   const records = await getRecords();
-  const { email, isAdmin } = await getUserInfo();
+  const users = await getUsers();
 
   return (
     <div>
-      <UserInfo email={email} isAdmin={isAdmin} />
-      <AddRecordForm />
-      <TableClient data={records} />
+      <CreateUserForm />
+      <UserList initialUsers={users} />
+      <AdminTable initialData={records} />
     </div>
   );
 }
+

@@ -1,0 +1,155 @@
+.sidebar {
+  width: 280px;
+  height: 100vh;
+  background-color: #f5f5f5;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  padding: 16px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  margin-bottom: 16px;
+}
+
+.logoIcon {
+  width: 32px;
+  height: 32px;
+  background-color: #10b981;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.img {
+  width: 160px;
+  height: 24px;
+}
+
+.nav {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.navSection {
+  margin-bottom: 12px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  color: #059669;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background-color: transparent;
+}
+
+.navItem:hover {
+  background-color: #d1fae5;
+  border-color: #a7f3d0;
+}
+
+.navItem.active {
+  background-color: #d1fae5;
+  color: #059669;
+  font-weight: 500;
+  
+}
+
+.navItem.active .navIcon {
+  color: #059669;
+}
+
+.navIcon {
+  width: 20px;
+  height: 20px;
+  color: #059669;
+  flex-shrink: 0;
+}
+
+.navText {
+  flex: 1;
+}
+
+.collapsibleSection {
+  margin-top: 8px;
+}
+
+.collapsibleHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  color: #4a4a4a;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 14px;
+}
+
+.collapsibleHeader:hover {
+  background-color: #eeeeee;
+}
+
+.collapsibleContent {
+  padding-left: 32px;
+}
+
+.subItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.2s;
+  font-size: 13px;
+  position: relative;
+}
+
+.subItem::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #9ca3af;
+}
+
+.subItem:hover {
+  color: #4a4a4a;
+}
+
+/* 스크롤바 스타일 */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+

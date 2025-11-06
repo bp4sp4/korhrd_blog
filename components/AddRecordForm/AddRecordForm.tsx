@@ -1,0 +1,238 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+import styles from './AddRecordForm.module.css';
+
+const FIELDS = [
+  '사회복지사',
+  '보육교사',
+  '한국어교원',
+  '평생교육사',
+  '편입',
+  '대학원',
+  '대졸자전형',
+  '일반과정',
+  '산업기사/기사',
+];
+
+interface AddRecordFormProps {
+  onRecordAdded?: () => void;
+}
+
+export default function AddRecordForm({ onRecordAdded }: AddRecordFormProps) {
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    id: '',
+    field: '사회복지사',
+    keyword: '',
+    ranking: '',
+    searchVolume: '',
+    title: '',
+    link: '',
+    author: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setError('');
+    setSuccess('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!formData.id || !formData.keyword || !formData.title || !formData.link) {
+      setError('필수 항목을 모두 입력해주세요.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const supabase = createClient();
+      const { error: insertError } = await supabase.from('blog_records').insert({
+        id: formData.id,
+        field: formData.field,
+        keyword: formData.keyword,
+        ranking: formData.ranking ? parseInt(formData.ranking) : null,
+        search_volume: formData.searchVolume ? parseInt(formData.searchVolume) : null,
+        title: formData.title,
+        link: formData.link,
+        author: formData.author || null,
+      });
+
+      if (insertError) throw insertError;
+
+      setSuccess('기록이 성공적으로 추가되었습니다.');
+      setFormData({
+        id: '',
+        field: '사회복지사',
+        keyword: '',
+        ranking: '',
+        searchVolume: '',
+        title: '',
+        link: '',
+        author: '',
+      });
+
+      router.refresh();
+      
+      if (onRecordAdded) {
+        onRecordAdded();
+      }
+    } catch (err: any) {
+      setError(err.message || '기록 추가 중 오류가 발생했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className={styles.addForm}>
+      <h2 className={styles.formTitle}>새 기록 추가</h2>
+      <form onSubmit={handleSubmit}>
+        <div className={styles.formGrid}>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>아이디 *</label>
+            <input
+              type="text"
+              name="id"
+              className={styles.input}
+              value={formData.id}
+              onChange={handleChange}
+              placeholder="아이디를 입력하세요"
+              required
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>분야 *</label>
+            <select
+              name="field"
+              className={styles.select}
+              value={formData.field}
+              onChange={handleChange}
+              required
+            >
+              {FIELDS.map((field) => (
+                <option key={field} value={field}>
+                  {field}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>키워드 *</label>
+            <input
+              type="text"
+              name="keyword"
+              className={styles.input}
+              value={formData.keyword}
+              onChange={handleChange}
+              placeholder="키워드를 입력하세요"
+              required
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>상위노출 순위</label>
+            <input
+              type="number"
+              name="ranking"
+              className={styles.input}
+              value={formData.ranking}
+              onChange={handleChange}
+              placeholder="순위를 입력하세요"
+              min="1"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>검색량</label>
+            <input
+              type="number"
+              name="searchVolume"
+              className={styles.input}
+              value={formData.searchVolume}
+              onChange={handleChange}
+              placeholder="검색량을 입력하세요"
+              min="0"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>제목 *</label>
+            <input
+              type="text"
+              name="title"
+              className={styles.input}
+              value={formData.title}
+              onChange={handleChange}
+              placeholder="제목을 입력하세요"
+              required
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>링크 *</label>
+            <input
+              type="url"
+              name="link"
+              className={styles.input}
+              value={formData.link}
+              onChange={handleChange}
+              placeholder="https://example.com"
+              required
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>작성자</label>
+            <input
+              type="text"
+              name="author"
+              className={styles.input}
+              value={formData.author}
+              onChange={handleChange}
+              placeholder="작성자를 입력하세요"
+            />
+          </div>
+        </div>
+        {error && <div className={styles.error}>{error}</div>}
+        {success && <div className={styles.success}>{success}</div>}
+        <div className={styles.formActions}>
+          <button
+            type="button"
+            className={`${styles.button} ${styles.secondary}`}
+            onClick={() => {
+              setFormData({
+                id: '',
+                field: '사회복지사',
+                keyword: '',
+                ranking: '',
+                searchVolume: '',
+                title: '',
+                link: '',
+                author: '',
+              });
+              setError('');
+              setSuccess('');
+            }}
+          >
+            초기화
+          </button>
+          <button
+            type="submit"
+            className={`${styles.button} ${styles.primary}`}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? '추가 중...' : '등록하기'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+

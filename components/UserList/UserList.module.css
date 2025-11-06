@@ -1,0 +1,123 @@
+.userListContainer {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 20px;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.tableHeader {
+  background-color: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.tableHeader th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  border-right: 1px solid #e5e7eb;
+}
+
+.tableHeader th:last-child {
+  border-right: none;
+}
+
+.tableBody tr {
+  border-bottom: 1px solid #e5e7eb;
+  transition: background-color 0.15s;
+}
+
+.tableBody tr:hover {
+  background-color: #f9fafb;
+}
+
+.tableBody td {
+  padding: 12px 16px;
+  color: #4b5563;
+  border-right: 1px solid #e5e7eb;
+  vertical-align: middle;
+}
+
+.tableBody td:last-child {
+  border-right: none;
+}
+
+.roleBadge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.roleBadge.admin {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.roleBadge.user {
+  background-color: #e5e7eb;
+  color: #6b7280;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 8px;
+}
+
+.actionButton {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toggleAdminButton {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.toggleAdminButton:hover {
+  background-color: #2563eb;
+}
+
+.toggleAdminButton.danger {
+  background-color: #ef4444;
+}
+
+.toggleAdminButton.danger:hover {
+  background-color: #dc2626;
+}
+
+.emptyState {
+  padding: 48px;
+  text-align: center;
+  color: #9ca3af;
+}
+
+.emptyState p {
+  margin: 0;
+  font-size: 14px;
+}
+
