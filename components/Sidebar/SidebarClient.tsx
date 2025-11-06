@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { FileText, Shield, Search } from 'lucide-react';
+import { FileText, Shield, Search, Sparkles, TrendingUp } from 'lucide-react';
 import styles from './Sidebar.module.css';
 
 interface SidebarClientProps {
@@ -47,7 +47,35 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
             }}
           >
             <Search size={20} className={styles.navIcon} />
-            <span className={styles.navText}>형태소 진단</span>
+            <span className={styles.navText}>원고 진단</span>
+          </a>
+        </div>
+
+        <div className={styles.navSection}>
+          <a
+            href="/smartblock"
+            className={`${styles.navItem} ${pathname === '/smartblock' ? styles.active : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick('/smartblock');
+            }}
+          >
+            <Sparkles size={20} className={styles.navIcon} />
+            <span className={styles.navText}>스마트블록 & 검색</span>
+          </a>
+        </div>
+
+        <div className={styles.navSection}>
+          <a
+            href="/keyword"
+            className={`${styles.navItem} ${pathname === '/keyword' ? styles.active : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick('/keyword');
+            }}
+          >
+            <TrendingUp size={20} className={styles.navIcon} />
+            <span className={styles.navText}>키워드 조회</span>
           </a>
         </div>
 

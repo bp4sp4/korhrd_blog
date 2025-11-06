@@ -1,0 +1,245 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 24px;
+}
+
+.searchSection {
+  margin-bottom: 32px;
+  padding: 20px;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.sectionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.searchBox {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.searchInput {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+  color: black;
+}
+
+.searchInput:focus {
+  border-color: #10b981;
+}
+
+.searchButton {
+  padding: 12px 24px;
+  background-color: #10b981;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.searchButton:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+.searchButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.description {
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.smartBlockSection {
+  background-color: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.smartBlockHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.totalCount {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.smartBlockTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.infoIcon {
+  font-size: 16px;
+}
+
+
+.emptyState {
+  text-align: center;
+  padding: 40px;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.loadingState {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.itemIcon {
+  font-size: 14px;
+  margin-left: 4px;
+}
+
+.smartBlockGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.smartBlockItem {
+  position: relative;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.smartBlockItem:hover {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.itemContent {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.keyword {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.tagPersonal {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.tagPopular {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.searchIcon {
+  font-size: 16px;
+  color: #9ca3af;
+  margin-left: 8px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.paginationButton {
+  padding: 6px 12px;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.paginationButton:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.paginationButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.paginationInfo {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .smartBlockGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .smartBlockGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .searchBox {
+    flex-direction: column;
+  }
+  
+  .searchButton {
+    width: 100%;
+  }
+}
+

@@ -17,7 +17,6 @@ export default function MorphemePage() {
   const [morphemes, setMorphemes] = useState<MorphemeResult[]>([]);
   const [topicKeywords, setTopicKeywords] = useState<TopicKeywords>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [searchTitle, setSearchTitle] = useState('');
 
   // 간단한 형태소 분석 (단어 분리 및 빈도수 계산)
   const analyzeMorphemes = (text: string): MorphemeResult[] => {
@@ -347,19 +346,6 @@ export default function MorphemePage() {
     setIsAnalyzing(false);
   };
 
-  const handleNaverSearch = () => {
-    if (!searchTitle.trim()) {
-      alert('제목을 입력해주세요.');
-      return;
-    }
-
-    // 네이버 검색 URL 생성
-    const encodedTitle = encodeURIComponent(searchTitle.trim());
-    const naverSearchUrl = `https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=${encodedTitle}`;
-    
-    // 새 창에서 네이버 검색 열기
-    window.open(naverSearchUrl, '_blank');
-  };
 
   return (
     <div className={styles.container}>
@@ -396,33 +382,6 @@ export default function MorphemePage() {
       </div>
 
       <div className={styles.rightColumn}>
-        <div className={styles.resultBox}>
-          <h3 className={styles.resultTitle}>네이버 검색</h3>
-          <div className={styles.searchSection}>
-            <input
-              type="text"
-              className={styles.searchInput}
-              value={searchTitle}
-              onChange={(e) => setSearchTitle(e.target.value)}
-              placeholder="제목을 입력하세요"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  handleNaverSearch();
-                }
-              }}
-            />
-            <button
-              className={styles.searchButton}
-              onClick={handleNaverSearch}
-            >
-              검색
-            </button>
-          </div>
-          <div className={styles.searchDescription}>
-            제목을 입력하고 검색 버튼을 클릭하면 네이버에서 해당 제목이 있는지 확인할 수 있습니다.
-          </div>
-        </div>
-
         {morphemes.length > 0 && (
           <div className={styles.resultBox}>
             <h3 className={styles.resultTitle}>형태소</h3>
