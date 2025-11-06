@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { FileText, Shield } from 'lucide-react';
+import { FileText, Shield, Search } from 'lucide-react';
 import styles from './Sidebar.module.css';
 
 interface SidebarClientProps {
@@ -34,6 +34,20 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
           >
             <FileText size={20} className={styles.navIcon} />
             <span className={styles.navText}>블로그 기록</span>
+          </a>
+        </div>
+
+        <div className={styles.navSection}>
+          <a
+            href="/morpheme"
+            className={`${styles.navItem} ${pathname === '/morpheme' ? styles.active : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick('/morpheme');
+            }}
+          >
+            <Search size={20} className={styles.navIcon} />
+            <span className={styles.navText}>형태소 진단</span>
           </a>
         </div>
 
