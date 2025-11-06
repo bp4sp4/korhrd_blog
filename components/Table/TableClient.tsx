@@ -3,7 +3,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { TableData } from './Table';
+import Pagination from '../Pagination/Pagination';
 import styles from './Table.module.css';
 
 const FIELDS_EDIT = [
@@ -60,7 +62,8 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState(7);
 
   const filteredData = useMemo(() => {
     return data.filter((item) => {
@@ -241,110 +244,122 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
       )}
 
       <div className={styles.filterSection}>
-        <div className={styles.filterRow}>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>아이디</label>
-            <input
-              type="text"
-              className={styles.filterInput}
-              value={filters.id}
-              onChange={(e) => handleFilterChange('id', e.target.value)}
-              placeholder="아이디 검색"
-            />
+        <div className={styles.filterHeader} onClick={() => setIsFilterOpen(!isFilterOpen)}>
+          <div className={styles.filterHeaderLeft}>
+            <Filter size={18} />
+            <span className={styles.filterHeaderTitle}>필터</span>
+            {Object.values(filters).some(v => v !== '' && v !== '전체') && (
+              <span className={styles.filterBadge}>활성</span>
+            )}
           </div>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>분야</label>
-            <select
-              className={styles.filterSelect}
-              value={filters.field}
-              onChange={(e) => handleFilterChange('field', e.target.value)}
-            >
-              {FIELDS.map((field) => (
-                <option key={field} value={field}>
-                  {field}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>키워드</label>
-            <input
-              type="text"
-              className={styles.filterInput}
-              value={filters.keyword}
-              onChange={(e) => handleFilterChange('keyword', e.target.value)}
-              placeholder="키워드 검색"
-            />
+          <div className={styles.filterHeaderRight}>
+            <span className={styles.paginationInfo}>
+              총 {filteredData.length}개 결과
+            </span>
+            {isFilterOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </div>
         </div>
-        <div className={styles.filterRow}>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>상위노출 순위</label>
-            <input
-              type="number"
-              className={styles.filterInput}
-              value={filters.ranking}
-              onChange={(e) => handleFilterChange('ranking', e.target.value)}
-              placeholder="순위"
-              min="1"
-            />
+        
+        {isFilterOpen && (
+          <div className={styles.filterContent}>
+            <div className={styles.filterGrid}>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>아이디</label>
+                <input
+                  type="text"
+                  className={styles.filterInput}
+                  value={filters.id}
+                  onChange={(e) => handleFilterChange('id', e.target.value)}
+                  placeholder="아이디 검색"
+                />
+              </div>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>분야</label>
+                <select
+                  className={styles.filterSelect}
+                  value={filters.field}
+                  onChange={(e) => handleFilterChange('field', e.target.value)}
+                >
+                  {FIELDS.map((field) => (
+                    <option key={field} value={field}>
+                      {field}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>키워드</label>
+                <input
+                  type="text"
+                  className={styles.filterInput}
+                  value={filters.keyword}
+                  onChange={(e) => handleFilterChange('keyword', e.target.value)}
+                  placeholder="키워드 검색"
+                />
+              </div>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>상위노출 순위</label>
+                <input
+                  type="number"
+                  className={styles.filterInput}
+                  value={filters.ranking}
+                  onChange={(e) => handleFilterChange('ranking', e.target.value)}
+                  placeholder="순위"
+                  min="1"
+                />
+              </div>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>검색량 (이상)</label>
+                <input
+                  type="number"
+                  className={styles.filterInput}
+                  value={filters.searchVolume}
+                  onChange={(e) => handleFilterChange('searchVolume', e.target.value)}
+                  placeholder="최소 검색량"
+                  min="0"
+                />
+              </div>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>제목</label>
+                <input
+                  type="text"
+                  className={styles.filterInput}
+                  value={filters.title}
+                  onChange={(e) => handleFilterChange('title', e.target.value)}
+                  placeholder="제목 검색"
+                />
+              </div>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>작성자</label>
+                <input
+                  type="text"
+                  className={styles.filterInput}
+                  value={filters.author}
+                  onChange={(e) => handleFilterChange('author', e.target.value)}
+                  placeholder="작성자 검색"
+                />
+              </div>
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel}>특이사항</label>
+                <input
+                  type="text"
+                  className={styles.filterInput}
+                  value={filters.specialNote}
+                  onChange={(e) => handleFilterChange('specialNote', e.target.value)}
+                  placeholder="특이사항 검색"
+                />
+              </div>
+            </div>
+            <div className={styles.filterActions}>
+              <button
+                className={`${styles.filterButton} ${styles.secondary}`}
+                onClick={handleResetFilters}
+              >
+                필터 초기화
+              </button>
+            </div>
           </div>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>검색량 (이상)</label>
-            <input
-              type="number"
-              className={styles.filterInput}
-              value={filters.searchVolume}
-              onChange={(e) => handleFilterChange('searchVolume', e.target.value)}
-              placeholder="최소 검색량"
-              min="0"
-            />
-          </div>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>제목</label>
-            <input
-              type="text"
-              className={styles.filterInput}
-              value={filters.title}
-              onChange={(e) => handleFilterChange('title', e.target.value)}
-              placeholder="제목 검색"
-            />
-          </div>
-        </div>
-        <div className={styles.filterRow}>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>작성자</label>
-            <input
-              type="text"
-              className={styles.filterInput}
-              value={filters.author}
-              onChange={(e) => handleFilterChange('author', e.target.value)}
-              placeholder="작성자 검색"
-            />
-          </div>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel}>특이사항</label>
-            <input
-              type="text"
-              className={styles.filterInput}
-              value={filters.specialNote}
-              onChange={(e) => handleFilterChange('specialNote', e.target.value)}
-              placeholder="특이사항 검색"
-            />
-          </div>
-        </div>
-        <div className={styles.filterActions}>
-          <button
-            className={`${styles.filterButton} ${styles.secondary}`}
-            onClick={handleResetFilters}
-          >
-            필터 초기화
-          </button>
-          <div style={{ flex: 1 }} />
-          <span className={styles.paginationInfo}>
-            총 {filteredData.length}개 결과
-          </span>
-        </div>
+        )}
       </div>
 
       {/* 선택된 항목에 대한 수정/삭제 버튼 */}
@@ -490,13 +505,17 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
                       <td>{item.keyword}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {item.ranking}
-                          {getMedalImage(item.ranking) && (
-                            <img
-                              src={getMedalImage(item.ranking) || ''}
-                              alt={`${item.ranking}위 메달`}
-                              style={{ width: '24px', height: '24px', objectFit: 'contain' }}
-                            />
+                          {getMedalImage(item.ranking) ? (
+                            <>
+                              <img
+                                src={getMedalImage(item.ranking) || ''}
+                                alt={`${item.ranking}위 메달`}
+                                style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                              />
+                              <span>({item.ranking}위)</span>
+                            </>
+                          ) : (
+                            <span>{item.ranking}</span>
                           )}
                         </div>
                       </td>
@@ -527,61 +546,19 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
             </tbody>
           </table>
         </div>
-        {totalPages > 1 && (
-          <div className={styles.pagination}>
-            <button
-              className={styles.paginationButton}
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-            >
-              이전
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter((page) => {
-                if (totalPages <= 7) return true;
-                return (
-                  page === 1 ||
-                  page === totalPages ||
-                  (page >= currentPage - 2 && page <= currentPage + 2)
-                );
-              })
-              .map((page, index, array) => {
-                if (index > 0 && array[index - 1] !== page - 1) {
-                  return (
-                    <span key={`ellipsis-${page}`}>
-                      <span className={styles.paginationInfo}>...</span>
-                      <button
-                        className={`${styles.paginationButton} ${
-                          currentPage === page ? styles.active : ''
-                        }`}
-                        onClick={() => setCurrentPage(page)}
-                      >
-                        {page}
-                      </button>
-                    </span>
-                  );
-                }
-                return (
-                  <button
-                    key={page}
-                    className={`${styles.paginationButton} ${
-                      currentPage === page ? styles.active : ''
-                    }`}
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </button>
-                );
-              })}
-            <button
-              className={styles.paginationButton}
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-            >
-              다음
-            </button>
-          </div>
-        )}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalCount={filteredData.length}
+          pageSize={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setItemsPerPage(size);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[7, 10, 20, 50, 100]}
+          showPageSizeSelector={true}
+        />
       </div>
 
       {editingRecord && (

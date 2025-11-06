@@ -68,8 +68,67 @@
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  padding: 24px;
   margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.filterHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.filterHeader:hover {
+  background-color: #f9fafb;
+}
+
+.filterHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filterHeaderTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.filterHeaderLeft svg {
+  color: #1f2937;
+}
+
+.filterHeaderRight svg {
+  color: #1f2937;
+}
+
+.filterBadge {
+  background-color: #059669;
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.filterHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filterContent {
+  padding: 20px;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
 }
 
 .filterRow {
@@ -84,8 +143,8 @@
 }
 
 .filterGroup {
-  flex: 1;
-  min-width: 200px;
+  display: flex;
+  flex-direction: column;
 }
 
 .filterLabel {
@@ -126,12 +185,22 @@
   background-color: white;
   cursor: pointer;
   transition: border-color 0.15s;
+  color: #d1d5db;
+}
+
+.filterSelect option {
+  color: #1f2937;
+}
+
+.filterSelect option[value="전체"] {
+  color: #6b7280;
 }
 
 .filterSelect:focus {
   outline: none;
   border-color: #059669;
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+  color: #1f2937;
 }
 
 .filterActions {
@@ -217,7 +286,8 @@
 
 .paginationInfo {
   font-size: 14px;
-  color: #6b7280;
+  color: #1f2937;
+  font-weight: 500;
   margin: 0 16px;
 }
 
