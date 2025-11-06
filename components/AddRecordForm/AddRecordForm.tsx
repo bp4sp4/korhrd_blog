@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import styles from './AddRecordForm.module.css';
@@ -21,9 +21,10 @@ interface AddRecordFormProps {
   onRecordAdded?: () => void;
   isOpen?: boolean;
   onClose?: () => void;
+  currentUserName?: string | null;
 }
 
-export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }: AddRecordFormProps) {
+export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, currentUserName }: AddRecordFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState({
     id: '',
@@ -39,6 +40,8 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // 모달이 열릴 때 작성자 필드 초기화 (한글로 입력받음)
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -51,7 +54,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
     setError('');
     setSuccess('');
 
-    if (!formData.id || !formData.keyword || !formData.title || !formData.link) {
+    if (!formData.id || !formData.keyword || !formData.title || !formData.link || !formData.author) {
       setError('필수 항목을 모두 입력해주세요.');
       return;
     }
@@ -225,14 +228,15 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
             />
           </div>
           <div className={styles.formGroup}>
-            <label className={styles.label}>작성자</label>
+            <label className={styles.label}>작성자 *</label>
             <input
               type="text"
               name="author"
               className={styles.input}
               value={formData.author}
               onChange={handleChange}
-              placeholder="작성자를 입력하세요"
+              placeholder="작성자 이름을 한글로 입력하세요"
+              required
             />
           </div>
         </div>

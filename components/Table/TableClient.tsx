@@ -34,9 +34,10 @@ const FIELDS = [
 interface TableClientProps {
   data: TableData[];
   isAdmin?: boolean;
+  currentUserName?: string | null;
 }
 
-export default function TableClient({ data, isAdmin = false }: TableClientProps) {
+export default function TableClient({ data, isAdmin = false, currentUserName = null }: TableClientProps) {
   const router = useRouter();
   const [filters, setFilters] = useState({
     id: '',
@@ -303,7 +304,7 @@ export default function TableClient({ data, isAdmin = false }: TableClientProps)
                 <th>제목</th>
                 <th>링크</th>
                 <th>작성자</th>
-                {isAdmin && <th>작업</th>}
+                <th>작업</th>
               </tr>
             </thead>
             <tbody className={styles.tableBody}>
@@ -327,8 +328,8 @@ export default function TableClient({ data, isAdmin = false }: TableClientProps)
                       </a>
                     </td>
                     <td>{item.author}</td>
-                    {isAdmin && (
-                      <td>
+                    <td>
+                      {(isAdmin || (currentUserName && item.author && item.author.trim() === currentUserName.trim())) ? (
                         <div className={styles.actionButtons}>
                           <button
                             className={`${styles.actionButton} ${styles.editButton}`}
@@ -343,13 +344,13 @@ export default function TableClient({ data, isAdmin = false }: TableClientProps)
                             삭제
                           </button>
                         </div>
-                      </td>
-                    )}
+                      ) : null}
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={isAdmin ? 9 : 8} className={styles.emptyState}>
+                  <td colSpan={9} className={styles.emptyState}>
                     <p>검색 결과가 없습니다.</p>
                   </td>
                 </tr>

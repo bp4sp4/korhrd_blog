@@ -37,18 +37,20 @@ async function getUserInfo() {
 
   let email: string | null = null;
   let isAdmin = false;
+  let userName: string | null = null;
 
   if (user) {
     email = user.email || null;
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_admin')
+      .select('is_admin, name')
       .eq('id', user.id)
       .single();
     isAdmin = profile?.is_admin || false;
+    userName = profile?.name || email?.split('@')[0] || null;
   }
 
-  return { email, isAdmin };
+  return { email, isAdmin, userName };
 }
 
 export default async function Home() {
@@ -63,13 +65,13 @@ export default async function Home() {
   }
 
   const records = await getRecords();
-  const { email, isAdmin } = await getUserInfo();
+  const { email, isAdmin, userName } = await getUserInfo();
 
   return (
     <div>
       <UserInfo email={email} isAdmin={isAdmin} />
-      <AddRecordButton />
-      <TableClient data={records} isAdmin={isAdmin} />
+      <AddRecordButton currentUserName={userName} />
+      <TableClient data={records} isAdmin={isAdmin} currentUserName={userName} />
     </div>
   );
 }
