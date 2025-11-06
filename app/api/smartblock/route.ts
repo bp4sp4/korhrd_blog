@@ -8,24 +8,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '키워드가 필요합니다.' }, { status: 400 });
     }
 
-    // Vercel 같은 서버리스 환경에서는 Puppeteer 실행이 제한적입니다
-    // 대안으로 간단한 메시지 반환 또는 다른 방법 사용
-    const isVercel = process.env.VERCEL === '1';
-    
-    if (isVercel) {
-      console.log('>>> Vercel 환경 감지: Puppeteer 대신 대체 방법 사용');
-      // Vercel에서는 Puppeteer가 작동하지 않으므로 안내 메시지 반환
-      return NextResponse.json({ 
-        error: '현재 배포 환경에서는 스마트블록 기능을 사용할 수 없습니다. 로컬 환경에서 테스트해주세요.',
-        isVercel: true,
-        suggestion: '스마트블록 기능은 Puppeteer가 필요한데, Vercel 같은 서버리스 환경에서는 실행이 제한됩니다.'
-      }, { status: 503 });
-    }
-
     // 동적 import로 puppeteer 로드 (서버 사이드에서만)
     let puppeteer;
     try {
       puppeteer = (await import('puppeteer')).default;
+      console.log('>>> Puppeteer 로드 성공');
     } catch (importError: any) {
       console.error('Puppeteer import 오류:', importError);
       return NextResponse.json({ 
@@ -34,6 +21,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
+    // 실제로 Puppeteer 실행 시도
+    console.log('>>> 스마트블록 크롤링 시작:', keyword);
     const smartBlockData = await crawlNaverSearchWithPuppeteer(keyword, puppeteer);
 
     return NextResponse.json({
@@ -71,6 +60,8 @@ async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof 
   try {
     // 배포 환경(Vercel 등)에서 Puppeteer 실행 옵션
     const isProduction = process.env.NODE_ENV === 'production';
+    const isVercel = process.env.VERCEL === '1';
+    
     const launchOptions: any = {
       headless: true,
       args: [
@@ -81,19 +72,35 @@ async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof 
         '--no-first-run',
         '--no-zygote',
         '--single-process', // 서버리스 환경에서 메모리 절약
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
       ]
     };
 
+    // Vercel 환경에서는 더 제한적인 옵션 사용
+    if (isVercel) {
+      console.log('>>> Vercel 환경 감지: 최소 옵션으로 실행 시도');
+      launchOptions.args.push('--disable-extensions');
+      launchOptions.timeout = 30000; // 30초 타임아웃
+    }
+
     // 프로덕션 환경에서는 추가 옵션
-    if (isProduction) {
+    if (isProduction && !isVercel) {
       launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
     }
 
     console.log('>>> Puppeteer 실행 옵션:', JSON.stringify(launchOptions, null, 2));
+    console.log('>>> 환경 정보:', { isProduction, isVercel });
     
     // Puppeteer를 헤드리스 모드로 실행 (GUI 없이)
-    browser = await puppeteer.launch(launchOptions); 
+    try {
+      browser = await puppeteer.launch(launchOptions);
+      console.log('>>> Puppeteer 브라우저 실행 성공');
+    } catch (launchError: any) {
+      console.error('>>> Puppeteer 브라우저 실행 실패:', launchError);
+      throw new Error(`Puppeteer 브라우저 실행 실패: ${launchError?.message || '알 수 없는 오류'}`);
+    } 
 
     const page = await browser.newPage();
     
