@@ -18,9 +18,17 @@ export async function POST(request: NextRequest) {
       smartBlocks: smartBlockData,
       totalBlocks: smartBlockData.length
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('크롤링 오류:', error);
-    return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 });
+    console.error('오류 상세:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name
+    });
+    return NextResponse.json({ 
+      error: '서버 오류가 발생했습니다.',
+      details: process.env.NODE_ENV === 'development' ? error?.message : undefined
+    }, { status: 500 });
   }
 }
 
@@ -28,8 +36,31 @@ async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof 
   let browser;
 
   try {
+    // 배포 환경(Vercel 등)에서 Puppeteer 실행 옵션
+    const isProduction = process.env.NODE_ENV === 'production';
+    const launchOptions: any = {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process', // 서버리스 환경에서 메모리 절약
+        '--disable-gpu'
+      ]
+    };
+
+    // 프로덕션 환경에서는 추가 옵션
+    if (isProduction) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+    }
+
+    console.log('>>> Puppeteer 실행 옵션:', JSON.stringify(launchOptions, null, 2));
+    
     // Puppeteer를 헤드리스 모드로 실행 (GUI 없이)
-    browser = await puppeteer.launch({ headless: true }); 
+    browser = await puppeteer.launch(launchOptions); 
 
     const page = await browser.newPage();
     
@@ -157,9 +188,15 @@ async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof 
 
     return smartBlocks;
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('Puppeteer 크롤링 중 예상치 못한 오류 발생:', error);
-    return [];
+    console.error('오류 상세:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name
+    });
+    // 에러를 상위로 전달하여 클라이언트에서 처리할 수 있도록
+    throw new Error(`스마트블록 크롤링 실패: ${error?.message || '알 수 없는 오류'}`);
   } finally {
     if (browser) {
       await browser.close();

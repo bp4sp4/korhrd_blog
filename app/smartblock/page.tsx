@@ -60,14 +60,16 @@ export default function SmartBlockPage() {
       });
 
       if (!response.ok) {
-        throw new Error('스마트블록 데이터를 가져오는데 실패했습니다.');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.details || '스마트블록 데이터를 가져오는데 실패했습니다.');
       }
 
       const data = await response.json();
       setSmartBlockGroups(data.smartBlocks || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('스마트블록 검색 중 오류 발생:', error);
-      alert('스마트블록 검색 중 오류가 발생했습니다.');
+      const errorMessage = error?.message || '스마트블록 검색 중 오류가 발생했습니다.';
+      alert(errorMessage);
       setSmartBlockGroups([]);
     } finally {
       setIsLoading(false);
