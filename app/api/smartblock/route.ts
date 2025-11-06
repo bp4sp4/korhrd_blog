@@ -8,8 +8,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '키워드가 필요합니다.' }, { status: 400 });
     }
 
+    // Vercel 같은 서버리스 환경에서는 Puppeteer 실행이 제한적입니다
+    // 대안으로 간단한 메시지 반환 또는 다른 방법 사용
+    const isVercel = process.env.VERCEL === '1';
+    
+    if (isVercel) {
+      console.log('>>> Vercel 환경 감지: Puppeteer 대신 대체 방법 사용');
+      // Vercel에서는 Puppeteer가 작동하지 않으므로 안내 메시지 반환
+      return NextResponse.json({ 
+        error: '현재 배포 환경에서는 스마트블록 기능을 사용할 수 없습니다. 로컬 환경에서 테스트해주세요.',
+        isVercel: true,
+        suggestion: '스마트블록 기능은 Puppeteer가 필요한데, Vercel 같은 서버리스 환경에서는 실행이 제한됩니다.'
+      }, { status: 503 });
+    }
+
     // 동적 import로 puppeteer 로드 (서버 사이드에서만)
-    const puppeteer = (await import('puppeteer')).default;
+    let puppeteer;
+    try {
+      puppeteer = (await import('puppeteer')).default;
+    } catch (importError: any) {
+      console.error('Puppeteer import 오류:', importError);
+      return NextResponse.json({ 
+        error: 'Puppeteer를 로드할 수 없습니다.',
+        details: importError?.message
+      }, { status: 500 });
+    }
+
     const smartBlockData = await crawlNaverSearchWithPuppeteer(keyword, puppeteer);
 
     return NextResponse.json({
@@ -23,12 +47,21 @@ export async function POST(request: NextRequest) {
     console.error('오류 상세:', {
       message: error?.message,
       stack: error?.stack,
-      name: error?.name
+      name: error?.name,
+      code: error?.code
     });
-    return NextResponse.json({ 
+    
+    // 더 자세한 에러 정보 반환 (개발 환경에서만)
+    const errorResponse: any = { 
       error: '서버 오류가 발생했습니다.',
-      details: process.env.NODE_ENV === 'development' ? error?.message : undefined
-    }, { status: 500 });
+    };
+    
+    if (process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development') {
+      errorResponse.details = error?.message;
+      errorResponse.stack = error?.stack;
+    }
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
 }
 

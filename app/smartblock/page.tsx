@@ -61,6 +61,10 @@ export default function SmartBlockPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        // Vercel 환경에서의 특별한 처리
+        if (errorData.isVercel) {
+          throw new Error(errorData.error || '배포 환경에서는 스마트블록 기능을 사용할 수 없습니다.');
+        }
         throw new Error(errorData.error || errorData.details || '스마트블록 데이터를 가져오는데 실패했습니다.');
       }
 
