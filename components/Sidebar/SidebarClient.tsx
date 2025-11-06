@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { FileText, Shield, Search, Sparkles, TrendingUp } from 'lucide-react';
+import { FileText, Shield, Search, Sparkles, TrendingUp, List } from 'lucide-react';
 import styles from './Sidebar.module.css';
 
 interface SidebarClientProps {
@@ -76,6 +76,20 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
           >
             <TrendingUp size={20} className={styles.navIcon} />
             <span className={styles.navText}>키워드 조회</span>
+          </a>
+        </div>
+
+        <div className={styles.navSection}>
+          <a
+            href="/bloglist"
+            className={`${styles.navItem} ${pathname === '/bloglist' ? styles.active : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick('/bloglist');
+            }}
+          >
+            <List size={20} className={styles.navIcon} />
+            <span className={styles.navText}>블로그 리스트</span>
           </a>
         </div>
 
