@@ -2,8 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { TableData } from '../components/Table/Table';
 import TableClient from '../components/Table/TableClient';
-import AddRecordForm from '../components/AddRecordForm/AddRecordForm';
 import UserInfo from '../components/UserInfo/UserInfo';
+import AddRecordButton from '../components/AddRecordButton/AddRecordButton';
 
 async function getRecords(): Promise<TableData[]> {
   const supabase = await createClient();
@@ -68,8 +68,8 @@ export default async function Home() {
   return (
     <div>
       <UserInfo email={email} isAdmin={isAdmin} />
-      <AddRecordForm />
-      <TableClient data={records} />
+      <AddRecordButton />
+      <TableClient data={records} isAdmin={isAdmin} />
     </div>
   );
 }

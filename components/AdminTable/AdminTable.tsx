@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { TableData } from '../Table/Table';
 import styles from './AdminTable.module.css';
@@ -23,6 +24,7 @@ interface AdminTableProps {
 }
 
 export default function AdminTable({ initialData }: AdminTableProps) {
+  const router = useRouter();
   const [data, setData] = useState(initialData);
   const [filters, setFilters] = useState({
     id: '',
@@ -34,11 +36,12 @@ export default function AdminTable({ initialData }: AdminTableProps) {
     author: '',
   });
   const [editingRecord, setEditingRecord] = useState<TableData | null>(null);
-  const [editForm, setEditForm] = useState<Partial<TableData>>({});
+  const [editForm, setEditForm] = useState<Partial<TableData & { ranking: string | number; searchVolume: string | number }>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const itemsPerPage = 20;
 
   const filteredData = useMemo(() => {
@@ -100,7 +103,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
   };
 
   const handleDelete = async (record: TableData) => {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+    if (!confirm(`"${record.title}" 기록을 정말 삭제하시겠습니까?`)) return;
 
     try {
       const supabase = createClient();
@@ -113,10 +116,23 @@ export default function AdminTable({ initialData }: AdminTableProps) {
 
       if (deleteError) throw deleteError;
 
-      setData((prev) => prev.filter((item) => item !== record));
+      // 로컬 상태 업데이트
+      setData((prev) => prev.filter((item) => 
+        !(item.id === record.id && item.keyword === record.keyword && item.title === record.title)
+      ));
+      
       setSuccess('삭제되었습니다.');
+      setShowSuccessMessage(true);
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+        setSuccess('');
+      }, 3000);
+      
+      // 서버 데이터와 동기화
+      router.refresh();
     } catch (err: any) {
       setError(err.message || '삭제 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
     }
   };
 
@@ -146,15 +162,30 @@ export default function AdminTable({ initialData }: AdminTableProps) {
 
       if (updateError) throw updateError;
 
+      // 로컬 상태 업데이트
       setData((prev) =>
         prev.map((item) =>
-          item === editingRecord ? { ...editingRecord, ...editForm } : item
+          item.id === editingRecord.id && 
+          item.keyword === editingRecord.keyword && 
+          item.title === editingRecord.title
+            ? { ...item, ...editForm }
+            : item
         )
       );
+      
       setEditingRecord(null);
       setSuccess('수정되었습니다.');
+      setShowSuccessMessage(true);
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+        setSuccess('');
+      }, 3000);
+      
+      // 서버 데이터와 동기화
+      router.refresh();
     } catch (err: any) {
       setError(err.message || '수정 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -162,6 +193,12 @@ export default function AdminTable({ initialData }: AdminTableProps) {
 
   return (
     <div>
+      {(error || (showSuccessMessage && success)) && (
+        <div className={`${styles.message} ${error ? styles.errorMessage : styles.successMessage}`}>
+          {error || success}
+        </div>
+      )}
+      
       <div className={styles.filterSection}>
         <div className={styles.filterRow}>
           <div className={styles.filterGroup}>
@@ -342,8 +379,8 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                 ×
               </button>
             </div>
-            {error && <div className={styles.error}>{error}</div>}
-            {success && <div className={styles.success}>{success}</div>}
+            {error && !showSuccessMessage && <div className={styles.error}>{error}</div>}
+            {success && showSuccessMessage && <div className={styles.success}>{success}</div>}
             <div className={styles.formGrid}>
               <div className={styles.formGroup}>
                 <label className={styles.label}>아이디</label>
@@ -382,8 +419,8 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                 <input
                   type="number"
                   className={styles.input}
-                  value={editForm.ranking || ''}
-                  onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value })}
+                  value={editForm.ranking?.toString() || ''}
+                  onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
                   min="1"
                 />
               </div>
@@ -392,8 +429,8 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                 <input
                   type="number"
                   className={styles.input}
-                  value={editForm.searchVolume || ''}
-                  onChange={(e) => setEditForm({ ...editForm, searchVolume: e.target.value })}
+                  value={editForm.searchVolume?.toString() || ''}
+                  onChange={(e) => setEditForm({ ...editForm, searchVolume: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
                   min="0"
                 />
               </div>

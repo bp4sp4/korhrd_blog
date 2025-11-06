@@ -19,9 +19,11 @@ const FIELDS = [
 
 interface AddRecordFormProps {
   onRecordAdded?: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export default function AddRecordForm({ onRecordAdded }: AddRecordFormProps) {
+export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }: AddRecordFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState({
     id: '',
@@ -85,6 +87,14 @@ export default function AddRecordForm({ onRecordAdded }: AddRecordFormProps) {
 
       router.refresh();
       
+      // 2초 후 모달 닫기
+      setTimeout(() => {
+        if (onClose) {
+          onClose();
+        }
+        setSuccess('');
+      }, 2000);
+      
       if (onRecordAdded) {
         onRecordAdded();
       }
@@ -95,10 +105,36 @@ export default function AddRecordForm({ onRecordAdded }: AddRecordFormProps) {
     }
   };
 
+  if (!isOpen) return null;
+
+  const handleClose = () => {
+    setFormData({
+      id: '',
+      field: '사회복지사',
+      keyword: '',
+      ranking: '',
+      searchVolume: '',
+      title: '',
+      link: '',
+      author: '',
+    });
+    setError('');
+    setSuccess('');
+    if (onClose) {
+      onClose();
+    }
+  };
+
   return (
-    <div className={styles.addForm}>
-      <h2 className={styles.formTitle}>새 기록 추가</h2>
-      <form onSubmit={handleSubmit}>
+    <div className={styles.modal} onClick={handleClose}>
+      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <h2 className={styles.formTitle}>새 기록 추가</h2>
+          <button className={styles.closeButton} onClick={handleClose}>
+            ×
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
         <div className={styles.formGrid}>
           <div className={styles.formGroup}>
             <label className={styles.label}>아이디 *</label>
@@ -232,6 +268,7 @@ export default function AddRecordForm({ onRecordAdded }: AddRecordFormProps) {
           </button>
         </div>
       </form>
+      </div>
     </div>
   );
 }

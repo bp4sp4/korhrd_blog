@@ -1,8 +1,22 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { TableData } from './Table';
 import styles from './Table.module.css';
+
+const FIELDS_EDIT = [
+  '사회복지사',
+  '보육교사',
+  '한국어교원',
+  '평생교육사',
+  '편입',
+  '대학원',
+  '대졸자전형',
+  '일반과정',
+  '산업기사/기사',
+];
 
 const FIELDS = [
   '전체',
@@ -19,9 +33,11 @@ const FIELDS = [
 
 interface TableClientProps {
   data: TableData[];
+  isAdmin?: boolean;
 }
 
-export default function TableClient({ data }: TableClientProps) {
+export default function TableClient({ data, isAdmin = false }: TableClientProps) {
+  const router = useRouter();
   const [filters, setFilters] = useState({
     id: '',
     field: '전체',
@@ -31,7 +47,12 @@ export default function TableClient({ data }: TableClientProps) {
     title: '',
     author: '',
   });
-
+  const [editingRecord, setEditingRecord] = useState<TableData | null>(null);
+  const [editForm, setEditForm] = useState<Partial<TableData & { ranking: string | number; searchVolume: string | number }>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -86,8 +107,92 @@ export default function TableClient({ data }: TableClientProps) {
     setCurrentPage(1);
   };
 
+  const handleEdit = (record: TableData) => {
+    setEditingRecord(record);
+    setEditForm(record);
+    setError('');
+    setSuccess('');
+  };
+
+  const handleDelete = async (record: TableData) => {
+    if (!confirm(`"${record.title}" 기록을 정말 삭제하시겠습니까?`)) return;
+
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase
+        .from('blog_records')
+        .delete()
+        .eq('id', record.id)
+        .eq('keyword', record.keyword)
+        .eq('title', record.title);
+
+      if (deleteError) throw deleteError;
+
+      setSuccess('삭제되었습니다.');
+      setShowSuccessMessage(true);
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+        setSuccess('');
+      }, 3000);
+
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message || '삭제 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingRecord) return;
+
+    setIsSubmitting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from('blog_records')
+        .update({
+          field: editForm.field,
+          keyword: editForm.keyword,
+          ranking: editForm.ranking ? parseInt(String(editForm.ranking)) : null,
+          search_volume: editForm.searchVolume ? parseInt(String(editForm.searchVolume)) : null,
+          title: editForm.title,
+          link: editForm.link,
+          author: editForm.author || null,
+        })
+        .eq('id', editingRecord.id)
+        .eq('keyword', editingRecord.keyword)
+        .eq('title', editingRecord.title);
+
+      if (updateError) throw updateError;
+
+      setEditingRecord(null);
+      setSuccess('수정되었습니다.');
+      setShowSuccessMessage(true);
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+        setSuccess('');
+      }, 3000);
+
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message || '수정 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div>
+      {(error || (showSuccessMessage && success)) && (
+        <div className={`${styles.message} ${error ? styles.errorMessage : styles.successMessage}`}>
+          {error || success}
+        </div>
+      )}
+
       <div className={styles.filterSection}>
         <div className={styles.filterRow}>
           <div className={styles.filterGroup}>
@@ -198,6 +303,7 @@ export default function TableClient({ data }: TableClientProps) {
                 <th>제목</th>
                 <th>링크</th>
                 <th>작성자</th>
+                {isAdmin && <th>작업</th>}
               </tr>
             </thead>
             <tbody className={styles.tableBody}>
@@ -221,11 +327,29 @@ export default function TableClient({ data }: TableClientProps) {
                       </a>
                     </td>
                     <td>{item.author}</td>
+                    {isAdmin && (
+                      <td>
+                        <div className={styles.actionButtons}>
+                          <button
+                            className={`${styles.actionButton} ${styles.editButton}`}
+                            onClick={() => handleEdit(item)}
+                          >
+                            수정
+                          </button>
+                          <button
+                            className={`${styles.actionButton} ${styles.deleteButton}`}
+                            onClick={() => handleDelete(item)}
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className={styles.emptyState}>
+                  <td colSpan={isAdmin ? 9 : 8} className={styles.emptyState}>
                     <p>검색 결과가 없습니다.</p>
                   </td>
                 </tr>
@@ -289,6 +413,128 @@ export default function TableClient({ data }: TableClientProps) {
           </div>
         )}
       </div>
+
+      {editingRecord && (
+        <div className={styles.modal} onClick={() => setEditingRecord(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>기록 수정</h3>
+              <button
+                className={styles.closeButton}
+                onClick={() => {
+                  setEditingRecord(null);
+                  setError('');
+                  setSuccess('');
+                }}
+              >
+                ×
+              </button>
+            </div>
+            {error && !showSuccessMessage && <div className={styles.error}>{error}</div>}
+            {success && showSuccessMessage && <div className={styles.success}>{success}</div>}
+            <div className={styles.formGrid}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>아이디</label>
+                <input
+                  type="text"
+                  className={styles.input}
+                  value={editForm.id || ''}
+                  disabled
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>분야</label>
+                <select
+                  className={styles.select}
+                  value={editForm.field || ''}
+                  onChange={(e) => setEditForm({ ...editForm, field: e.target.value })}
+                >
+                  {FIELDS_EDIT.map((field) => (
+                    <option key={field} value={field}>
+                      {field}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>키워드</label>
+                <input
+                  type="text"
+                  className={styles.input}
+                  value={editForm.keyword || ''}
+                  onChange={(e) => setEditForm({ ...editForm, keyword: e.target.value })}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>상위노출 순위</label>
+                <input
+                  type="number"
+                  className={styles.input}
+                  value={editForm.ranking?.toString() || ''}
+                  onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
+                  min="1"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>검색량</label>
+                <input
+                  type="number"
+                  className={styles.input}
+                  value={editForm.searchVolume?.toString() || ''}
+                  onChange={(e) => setEditForm({ ...editForm, searchVolume: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
+                  min="0"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>제목</label>
+                <input
+                  type="text"
+                  className={styles.input}
+                  value={editForm.title || ''}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>링크</label>
+                <input
+                  type="url"
+                  className={styles.input}
+                  value={editForm.link || ''}
+                  onChange={(e) => setEditForm({ ...editForm, link: e.target.value })}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>작성자</label>
+                <input
+                  type="text"
+                  className={styles.input}
+                  value={editForm.author || ''}
+                  onChange={(e) => setEditForm({ ...editForm, author: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className={styles.modalActions}>
+              <button
+                className={`${styles.button} ${styles.secondary}`}
+                onClick={() => {
+                  setEditingRecord(null);
+                  setError('');
+                  setSuccess('');
+                }}
+              >
+                취소
+              </button>
+              <button
+                className={`${styles.button} ${styles.primary}`}
+                onClick={handleUpdate}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? '수정 중...' : '저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
