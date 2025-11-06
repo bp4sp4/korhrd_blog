@@ -21,10 +21,9 @@ interface AddRecordFormProps {
   onRecordAdded?: () => void;
   isOpen?: boolean;
   onClose?: () => void;
-  currentUserName?: string | null;
 }
 
-export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, currentUserName }: AddRecordFormProps) {
+export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }: AddRecordFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState({
     id: '',
@@ -75,6 +74,16 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
       });
 
       if (insertError) throw insertError;
+
+      // 작성자 이름을 localStorage에 저장 (본인이 작성한 기록 판별용)
+      if (formData.author && typeof window !== 'undefined') {
+        const stored = localStorage.getItem('myAuthorNames');
+        let names: string[] = stored ? JSON.parse(stored) : [];
+        if (!names.includes(formData.author)) {
+          names.push(formData.author);
+          localStorage.setItem('myAuthorNames', JSON.stringify(names));
+        }
+      }
 
       setSuccess('기록이 성공적으로 추가되었습니다.');
       setFormData({
@@ -235,7 +244,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
               className={styles.input}
               value={formData.author}
               onChange={handleChange}
-              placeholder="작성자 이름을 한글로 입력하세요"
+              placeholder="작성자 이름을 한글로 입력하세요 (예: 홍길동)"
               required
             />
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { TableData } from './Table';
@@ -34,11 +34,27 @@ const FIELDS = [
 interface TableClientProps {
   data: TableData[];
   isAdmin?: boolean;
-  currentUserName?: string | null;
 }
 
-export default function TableClient({ data, isAdmin = false, currentUserName = null }: TableClientProps) {
+export default function TableClient({ data, isAdmin = false }: TableClientProps) {
   const router = useRouter();
+  const [myAuthorNames, setMyAuthorNames] = useState<string[]>([]);
+
+  // localStorage에서 현재 사용자가 입력한 작성자 이름 목록 가져오기
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('myAuthorNames');
+      if (stored) {
+        try {
+          const names = JSON.parse(stored);
+          setMyAuthorNames(Array.isArray(names) ? names : []);
+        } catch (e) {
+          setMyAuthorNames([]);
+        }
+      }
+    }
+  }, [data]); // data가 변경될 때마다 다시 읽어오기
+
   const [filters, setFilters] = useState({
     id: '',
     field: '전체',
@@ -329,22 +345,31 @@ export default function TableClient({ data, isAdmin = false, currentUserName = n
                     </td>
                     <td>{item.author}</td>
                     <td>
-                      {(isAdmin || (currentUserName && item.author && item.author.trim() === currentUserName.trim())) ? (
-                        <div className={styles.actionButtons}>
-                          <button
-                            className={`${styles.actionButton} ${styles.editButton}`}
-                            onClick={() => handleEdit(item)}
-                          >
-                            수정
-                          </button>
-                          <button
-                            className={`${styles.actionButton} ${styles.deleteButton}`}
-                            onClick={() => handleDelete(item)}
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      ) : null}
+                      {(() => {
+                        // 권한 체크: 관리자이거나 작성자가 본인인 경우
+                        // 작성자 이름으로만 비교 (사용자가 입력한 값 그대로)
+                        const isAuthor = item.author && myAuthorNames.some(
+                          name => name && name.trim() === item.author.trim()
+                        );
+                        const canEdit = isAdmin || isAuthor;
+                        
+                        return canEdit ? (
+                          <div className={styles.actionButtons}>
+                            <button
+                              className={`${styles.actionButton} ${styles.editButton}`}
+                              onClick={() => handleEdit(item)}
+                            >
+                              수정
+                            </button>
+                            <button
+                              className={`${styles.actionButton} ${styles.deleteButton}`}
+                              onClick={() => handleDelete(item)}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        ) : null;
+                      })()}
                     </td>
                   </tr>
                 ))
