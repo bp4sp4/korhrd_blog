@@ -36,26 +36,11 @@ const FIELDS = [
 interface TableClientProps {
   data: TableData[];
   isAdmin?: boolean;
+  currentUserName?: string | null;
 }
 
-export default function TableClient({ data, isAdmin = false }: TableClientProps) {
+export default function TableClient({ data, isAdmin = false, currentUserName }: TableClientProps) {
   const router = useRouter();
-  const [myAuthorNames, setMyAuthorNames] = useState<string[]>([]);
-
-  // localStorage에서 현재 사용자가 입력한 작성자 이름 목록 가져오기
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('myAuthorNames');
-      if (stored) {
-        try {
-          const names = JSON.parse(stored);
-          setMyAuthorNames(Array.isArray(names) ? names : []);
-        } catch (e) {
-          setMyAuthorNames([]);
-        }
-      }
-    }
-  }, [data]); // data가 변경될 때마다 다시 읽어오기
 
   const [filters, setFilters] = useState({
     id: '',
@@ -377,9 +362,8 @@ export default function TableClient({ data, isAdmin = false }: TableClientProps)
               
               // 선택된 항목 중 수정 가능한 항목만 필터링
               const editableItems = selectedItems.filter(item => {
-                const isAuthor = item.author && myAuthorNames.some(
-                  name => name && name.trim() === item.author.trim()
-                );
+                const isAuthor = item.author && currentUserName && 
+                  item.author.trim() === currentUserName.trim();
                 return isAdmin || isAuthor;
               });
 
@@ -485,9 +469,9 @@ export default function TableClient({ data, isAdmin = false }: TableClientProps)
                   const recordKey = `${item.id}-${item.keyword}-${item.title}`;
                   const isChecked = selectedRecords.has(recordKey);
                   // 권한 체크: 관리자이거나 작성자가 본인인 경우
-                  const isAuthor = item.author && myAuthorNames.some(
-                    name => name && name.trim() === item.author.trim()
-                  );
+                  // 현재 사용자의 name과 기록의 author를 비교
+                  const isAuthor = item.author && currentUserName && 
+                    item.author.trim() === currentUserName.trim();
                   const canEdit = isAdmin || isAuthor;
                   
                   return (

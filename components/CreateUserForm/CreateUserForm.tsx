@@ -8,6 +8,7 @@ export default function CreateUserForm() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
+    name: '',
     isAdmin: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,8 +30,8 @@ export default function CreateUserForm() {
     setError('');
     setSuccess('');
 
-    if (!formData.email || !formData.password) {
-      setError('이메일과 비밀번호를 모두 입력해주세요.');
+    if (!formData.email || !formData.password || !formData.name) {
+      setError('이메일, 비밀번호, 이름을 모두 입력해주세요.');
       return;
     }
 
@@ -45,6 +46,7 @@ export default function CreateUserForm() {
         body: JSON.stringify({
           email: formData.email,
           password: formData.password,
+          name: formData.name,
           isAdmin: formData.isAdmin,
         }),
       });
@@ -59,6 +61,7 @@ export default function CreateUserForm() {
       setFormData({
         email: '',
         password: '',
+        name: '',
         isAdmin: false,
       });
       
@@ -104,6 +107,18 @@ export default function CreateUserForm() {
             />
           </div>
           <div className={styles.formGroup}>
+            <label className={styles.label}>이름 *</label>
+            <input
+              type="text"
+              name="name"
+              className={styles.input}
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="이름을 입력하세요 (한글)"
+              required
+            />
+          </div>
+          <div className={styles.formGroup}>
             <label className={styles.label}>권한</label>
             <div className={styles.checkboxGroup}>
               <input
@@ -127,6 +142,7 @@ export default function CreateUserForm() {
               setFormData({
                 email: '',
                 password: '',
+                name: '',
                 isAdmin: false,
               });
               setError('');

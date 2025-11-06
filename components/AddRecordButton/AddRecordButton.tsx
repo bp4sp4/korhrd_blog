@@ -4,7 +4,11 @@ import { useState } from 'react';
 import AddRecordForm from '../AddRecordForm/AddRecordForm';
 import styles from './AddRecordButton.module.css';
 
-export default function AddRecordButton() {
+interface AddRecordButtonProps {
+  currentUserName?: string | null;
+}
+
+export default function AddRecordButton({ currentUserName }: AddRecordButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
@@ -20,6 +24,7 @@ export default function AddRecordButton() {
       <AddRecordForm
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        currentUserName={currentUserName}
       />
     </>
   );

@@ -24,11 +24,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { email, password, isAdmin } = await request.json();
+    const { email, password, name, isAdmin } = await request.json();
 
-    if (!email || !password) {
+    if (!email || !password || !name) {
       return NextResponse.json(
-        { error: 'Email and password are required' },
+        { error: 'Email, password, and name are required' },
         { status: 400 }
       );
     }
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
           {
             id: authData.user.id,
             email,
+            name,
             is_admin: isAdmin || false,
           },
           {

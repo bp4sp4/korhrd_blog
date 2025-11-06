@@ -71,8 +71,8 @@ export default async function Home() {
   return (
     <div>
       <UserInfo email={email} isAdmin={isAdmin} />
-      <AddRecordButton />
-      <TableClient data={records} isAdmin={isAdmin} />
+      <AddRecordButton currentUserName={userName} />
+      <TableClient data={records} isAdmin={isAdmin} currentUserName={userName} />
     </div>
   );
 }

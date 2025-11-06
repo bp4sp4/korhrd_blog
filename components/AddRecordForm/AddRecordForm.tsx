@@ -22,9 +22,10 @@ interface AddRecordFormProps {
   onRecordAdded?: () => void;
   isOpen?: boolean;
   onClose?: () => void;
+  currentUserName?: string | null;
 }
 
-export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }: AddRecordFormProps) {
+export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, currentUserName }: AddRecordFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState({
     id: '',
@@ -34,14 +35,11 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
     searchVolume: '',
     title: '',
     link: '',
-    author: '',
     specialNote: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-
-  // 모달이 열릴 때 작성자 필드 초기화 (한글로 입력받음)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -55,7 +53,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
     setError('');
     setSuccess('');
 
-    if (!formData.id || !formData.keyword || !formData.title || !formData.link || !formData.author) {
+    if (!formData.id || !formData.keyword || !formData.title || !formData.link || !currentUserName) {
       setError('필수 항목을 모두 입력해주세요.');
       return;
     }
@@ -72,21 +70,11 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
         search_volume: formData.searchVolume ? parseInt(formData.searchVolume) : null,
         title: formData.title,
         link: formData.link,
-        author: formData.author || null,
+        author: currentUserName || null,
         special_note: formData.specialNote || null,
       });
 
       if (insertError) throw insertError;
-
-      // 작성자 이름을 localStorage에 저장 (본인이 작성한 기록 판별용)
-      if (formData.author && typeof window !== 'undefined') {
-        const stored = localStorage.getItem('myAuthorNames');
-        let names: string[] = stored ? JSON.parse(stored) : [];
-        if (!names.includes(formData.author)) {
-          names.push(formData.author);
-          localStorage.setItem('myAuthorNames', JSON.stringify(names));
-        }
-      }
 
       setSuccess('기록이 성공적으로 추가되었습니다.');
       setFormData({
@@ -97,7 +85,6 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
         searchVolume: '',
         title: '',
         link: '',
-        author: '',
         specialNote: '',
       });
 
@@ -132,7 +119,6 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
       searchVolume: '',
       title: '',
       link: '',
-      author: '',
       specialNote: '',
     });
     setError('');
@@ -242,18 +228,6 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
             />
           </div>
           <div className={styles.formGroup}>
-            <label className={styles.label}>작성자 *</label>
-            <input
-              type="text"
-              name="author"
-              className={styles.input}
-              value={formData.author}
-              onChange={handleChange}
-              placeholder="작성자 이름을 한글로 입력하세요 (예: 홍길동)"
-              required
-            />
-          </div>
-          <div className={styles.formGroup}>
             <label className={styles.label}>특이사항</label>
             <input
               type="text"
@@ -280,7 +254,6 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose }
                 searchVolume: '',
                 title: '',
                 link: '',
-                author: '',
                 specialNote: '',
               });
               setError('');
