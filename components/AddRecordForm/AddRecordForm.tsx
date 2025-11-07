@@ -53,7 +53,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
     setError('');
     setSuccess('');
 
-    if (!formData.id || !formData.keyword || !formData.title || !formData.link || !currentUserName) {
+    if (!formData.id || !formData.keyword || !formData.title || !currentUserName) {
       setError('필수 항목을 모두 입력해주세요.');
       return;
     }
@@ -69,7 +69,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
         ranking: formData.ranking ? parseInt(formData.ranking) : null,
         search_volume: formData.searchVolume ? parseInt(formData.searchVolume) : null,
         title: formData.title,
-        link: formData.link,
+        link: formData.link || null, // 링크는 선택사항
         author: currentUserName || null,
         special_note: formData.specialNote || null,
       });
@@ -90,17 +90,19 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
 
       router.refresh();
       
-      // 2초 후 모달 닫기
-      setTimeout(() => {
-        if (onClose) {
-          onClose();
-        }
-        setSuccess('');
-      }, 2000);
+      // 즉시 모달 닫기
+      if (onClose) {
+        onClose();
+      }
       
       if (onRecordAdded) {
         onRecordAdded();
       }
+      
+      // 성공 메시지는 잠시 후 초기화 (화면에는 표시되지 않지만 상태 정리)
+      setTimeout(() => {
+        setSuccess('');
+      }, 100);
     } catch (err: any) {
       setError(err.message || '기록 추가 중 오류가 발생했습니다.');
     } finally {
@@ -216,15 +218,14 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
             />
           </div>
           <div className={styles.formGroup}>
-            <label className={styles.label}>링크 *</label>
+            <label className={styles.label}>링크</label>
             <input
               type="url"
               name="link"
               className={styles.input}
               value={formData.link}
               onChange={handleChange}
-              placeholder="https://example.com"
-              required
+              placeholder="https://example.com (선택사항)"
             />
           </div>
           <div className={styles.formGroup}>

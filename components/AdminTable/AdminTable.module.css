@@ -463,3 +463,83 @@
   border: 1px solid #fecaca;
 }
 
+/* 체크박스 스타일 */
+.checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #059669;
+}
+
+/* 선택된 행 스타일 */
+.selectedRow {
+  background-color: #eff6ff !important;
+}
+
+.selectedRow:hover {
+  background-color: #dbeafe !important;
+}
+
+/* 일괄 작업 버튼 영역 */
+.bulkActions {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bulkActionsInfo {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.bulkActionsButtons {
+  display: flex;
+  gap: 12px;
+}
+
+.bulkActionButton {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bulkActionButton.editButton {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.bulkActionButton.editButton:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+.bulkActionButton.deleteButton {
+  background-color: #ef4444;
+  color: white;
+}
+
+.bulkActionButton.deleteButton:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+.bulkActionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 링크가 없는 경우 스타일 */
+.noLink {
+  color: #9ca3af;
+  font-style: italic;
+}
+

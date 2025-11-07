@@ -34,7 +34,9 @@ export default function SmartBlockPage() {
       return;
     }
 
-    const encodedQuery = encodeURIComponent(titleQuery.trim());
+    // 따옴표로 제목을 감싸서 정확한 검색
+    const queryWithQuotes = `"${titleQuery.trim()}"`;
+    const encodedQuery = encodeURIComponent(queryWithQuotes);
     const naverSearchUrl = `https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=${encodedQuery}`;
     window.open(naverSearchUrl, '_blank');
   };

@@ -283,6 +283,12 @@
   line-height: 1.6;
 }
 
+/* 금칙어 스타일 (빨간색) */
+.forbiddenMent {
+  color: #dc2626 !important; /* 빨간색 */
+}
+
+/* 상업 멘트 스타일 (보라색) */
 .commercialMent {
   color: #9333ea !important; /* 보라색 */
 }
@@ -314,6 +320,16 @@
   margin-bottom: 16px;
 }
 
+/* 금칙어 하이라이트 (빨간색) */
+.forbiddenHighlight {
+  background-color: #fee2e2;
+  color: #dc2626;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+/* 상업 멘트 하이라이트 (보라색) */
 .commercialHighlight {
   background-color: #f3e8ff;
   color: #9333ea;

@@ -273,10 +273,16 @@ export default function MorphemePage() {
       '스타·연예인': [
         '보아'
       ],
-      '상업 멘트': [
-        '최대한', '가장', '제일', '투자', '연락처', '상담', '추천', '후기', '강도', '최대', '만족', 
-        '100%', '의사', '환자', '저렴', '문의', '특별', '완벽', '평생', '요가', '고자', '휴대폰', 
-        '남성', '여성', '성별', '무료', '무료상담'
+      '금칙어': [
+        // 절대성 표현
+        '언제나', '무조건', '완벽히', '완벽', '항상', '절대', '반드시', '필수',
+        // 비교 우위 표현
+        '최고', '최상', '1등', '1위', '단연', '유일', '유일하게', '오직',
+        // 과장된 표현
+        '100%', '확실', '보장', '담보', '약속', '신뢰', '믿음',
+        // 오도성 표현
+        '의사', '환자', '남성', '여성', '성별', '요가', '고자', '휴대폰',
+        '강도', '최소'
       ],
     };
 
@@ -312,21 +318,146 @@ export default function MorphemePage() {
     return categorized;
   };
 
-  // 상업 멘트 키워드 목록
-  const commercialMentKeywords = [
-    '최대한', '가장', '제일', '투자', '연락처', '상담', '추천', '후기', '강도', '최대', '만족', 
-    '100%', '의사', '환자', '저렴', '문의', '특별', '완벽', '평생', '요가', '고자', '휴대폰', 
-    '남성', '여성', '성별', '무료', '무료상담'
+  // 금칙어 키워드 목록 (절대성 표현, 비교 우위 표현 등 - 빨간색으로 표시)
+  const forbiddenKeywords = [
+    // 절대성 표현
+    '언제나', '무조건', '완벽히', '완벽', '항상', '절대', '반드시', '필수',
+    
+    // 비교 우위 표현
+    '최고', '최상', '1등', '1위', '단연', '유일', '유일하게', '오직',
+    
+    // 과장된 표현
+    '100%', '확실', '보장', '담보', '약속', '신뢰', '믿음',
+    
+    // 오도성 표현
+    '의사', '환자', '남성', '여성', '성별', '요가', '고자', '휴대폰',
+    '강도', '최소'
   ];
 
-  // 본문에서 상업 멘트 키워드를 하이라이트하는 함수
+  // 상업 멘트 키워드 목록 (광고성 표현 - 보라색 또는 다른 색으로 표시)
+  const commercialMentKeywords = [
+    // 광고성 표현
+    '투자', '연락처', '상담', '추천', '후기', '만족', '특별', '평생', 
+    '무료', '무료상담', '저렴', '싸게', '할인', '특가', '이벤트', '혜택',
+    '문의', '상담받기', '지금', '지금당장', '바로', '즉시',
+    
+    // 비교 우위 표현 (상업성)
+    '최대한', '가장', '제일', '최대',
+    
+    // 기타 상업적 표현
+    '광고', '홍보', '판매', '구매', '주문', '신청', '예약'
+  ];
+
+  // 본문에서 금칙어와 상업 멘트 키워드를 하이라이트하는 함수
   const highlightCommercialMents = (text: string): string => {
-    let highlightedText = text;
-    commercialMentKeywords.forEach(keyword => {
-      const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-      highlightedText = highlightedText.replace(regex, '<span class="' + styles.commercialHighlight + '">$1</span>');
+    // 원본 텍스트에서 금칙어와 상업 멘트 위치를 모두 기록
+    type HighlightItem = { start: number; end: number; type: 'forbidden' | 'commercial'; text: string };
+    const highlights: HighlightItem[] = [];
+    
+    // 1. 금칙어 위치 기록
+    forbiddenKeywords.forEach(keyword => {
+      const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // 한국어는 단어 경계가 명확하지 않으므로 직접 매칭
+      const regex = new RegExp(escapedKeyword, 'gi');
+      let match;
+      const regexCopy = new RegExp(regex.source, regex.flags); // regex 재사용을 위한 복사
+      while ((match = regexCopy.exec(text)) !== null) {
+        highlights.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          type: 'forbidden',
+          text: match[0]
+        });
+      }
     });
-    return highlightedText;
+    
+    // 2. 상업 멘트 위치 기록 (금칙어와 겹치지 않는 것만)
+    commercialMentKeywords.forEach(keyword => {
+      const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // 한국어는 단어 경계가 명확하지 않으므로 직접 매칭
+      const regex = new RegExp(escapedKeyword, 'gi');
+      let match;
+      const regexCopy = new RegExp(regex.source, regex.flags);
+      while ((match = regexCopy.exec(text)) !== null) {
+        const start = match.index;
+        const end = match.index + match[0].length;
+        
+        // 금칙어와 겹치는지 확인
+        const overlaps = highlights.some(h => 
+          h.type === 'forbidden' && (
+            (start >= h.start && start < h.end) ||
+            (end > h.start && end <= h.end) ||
+            (start <= h.start && end >= h.end)
+          )
+        );
+        
+        if (!overlaps) {
+          highlights.push({
+            start,
+            end,
+            type: 'commercial',
+            text: match[0]
+          });
+        }
+      }
+    });
+    
+    // 3. 위치를 시작점 기준으로 정렬하고 겹치는 부분 제거 (금칙어 우선)
+    highlights.sort((a, b) => a.start - b.start);
+    const finalHighlights: HighlightItem[] = [];
+    highlights.forEach(current => {
+      const overlaps = finalHighlights.some(existing => 
+        (current.start < existing.end && current.end > existing.start)
+      );
+      if (!overlaps) {
+        finalHighlights.push(current);
+      }
+    });
+    
+    // 4. 텍스트를 분할하여 하이라이트 적용
+    if (finalHighlights.length === 0) {
+      return text;
+    }
+    
+    const parts: Array<{ text: string; type: 'forbidden' | 'commercial' | 'normal' }> = [];
+    let lastIndex = 0;
+    
+    finalHighlights.forEach(highlight => {
+      // 하이라이트 앞의 일반 텍스트
+      if (highlight.start > lastIndex) {
+        parts.push({
+          text: text.substring(lastIndex, highlight.start),
+          type: 'normal'
+        });
+      }
+      
+      // 하이라이트된 텍스트
+      parts.push({
+        text: text.substring(highlight.start, highlight.end),
+        type: highlight.type
+      });
+      
+      lastIndex = highlight.end;
+    });
+    
+    // 마지막 하이라이트 뒤의 일반 텍스트
+    if (lastIndex < text.length) {
+      parts.push({
+        text: text.substring(lastIndex),
+        type: 'normal'
+      });
+    }
+    
+    // HTML 조합
+    return parts.map(part => {
+      if (part.type === 'normal') {
+        return part.text;
+      }
+      const className = part.type === 'forbidden' 
+        ? styles.forbiddenHighlight 
+        : styles.commercialHighlight;
+      return '<span class="' + className + '">' + part.text + '</span>';
+    }).join('');
   };
 
   const handleAnalyze = () => {
@@ -402,10 +533,14 @@ export default function MorphemePage() {
             <div className={styles.topicList}>
               {Object.entries(topicKeywords).map(([topic, keywords]) => (
                 <div key={topic} className={styles.topicItem}>
-                  <div className={`${styles.topicName} ${topic === '상업 멘트' ? styles.commercialMent : ''}`}>
+                  <div className={`${styles.topicName} ${
+                    topic === '금칙어' ? styles.forbiddenMent : ''
+                  }`}>
                     {topic}
                   </div>
-                  <div className={`${styles.keywords} ${topic === '상업 멘트' ? styles.commercialMent : ''}`}>
+                  <div className={`${styles.keywords} ${
+                    topic === '금칙어' ? styles.forbiddenMent : ''
+                  }`}>
                     {keywords.join(', ')}
                   </div>
                 </div>

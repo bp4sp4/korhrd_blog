@@ -39,6 +39,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
     author: '',
     specialNote: '',
   });
+  const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
   const [editingRecord, setEditingRecord] = useState<TableData | null>(null);
   const [editForm, setEditForm] = useState<Partial<TableData & { ranking: string | number; searchVolume: string | number }>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,6 +89,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setCurrentPage(1);
+    setSelectedRecords(new Set()); // 필터 변경 시 선택 초기화
   };
 
   const handleResetFilters = () => {
@@ -112,33 +114,95 @@ export default function AdminTable({ initialData }: AdminTableProps) {
     return null;
   };
 
-  const handleEdit = (record: TableData) => {
+  // 레코드 고유 키 생성
+  const getRecordKey = (record: TableData) => {
+    return `${record.id}-${record.keyword}-${record.title}`;
+  };
+
+  // 체크박스 선택/해제
+  const handleToggleSelect = (record: TableData) => {
+    const key = getRecordKey(record);
+    setSelectedRecords((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // 전체 선택/해제
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const keys = new Set(paginatedData.map(getRecordKey));
+      setSelectedRecords(keys);
+    } else {
+      setSelectedRecords(new Set());
+    }
+  };
+
+  // 선택된 레코드 가져오기
+  const getSelectedRecords = () => {
+    return paginatedData.filter((record) => selectedRecords.has(getRecordKey(record)));
+  };
+
+  const handleEdit = () => {
+    const selected = getSelectedRecords();
+    if (selected.length !== 1) {
+      setError('수정하려면 하나의 항목만 선택해주세요.');
+      return;
+    }
+    const record = selected[0];
     setEditingRecord(record);
     setEditForm(record);
     setError('');
     setSuccess('');
   };
 
-  const handleDelete = async (record: TableData) => {
-    if (!confirm(`"${record.title}" 기록을 정말 삭제하시겠습니까?`)) return;
+  const handleDelete = async () => {
+    const selected = getSelectedRecords();
+    if (selected.length === 0) {
+      setError('삭제할 항목을 선택해주세요.');
+      return;
+    }
+
+    const confirmMessage = selected.length === 1
+      ? `"${selected[0].title}" 기록을 정말 삭제하시겠습니까?`
+      : `선택한 ${selected.length}개의 기록을 정말 삭제하시겠습니까?`;
+
+    if (!confirm(confirmMessage)) return;
+
+    setIsSubmitting(true);
+    setError('');
+    setSuccess('');
 
     try {
       const supabase = createClient();
-      const { error: deleteError } = await supabase
-        .from('blog_records')
-        .delete()
-        .eq('id', record.id)
-        .eq('keyword', record.keyword)
-        .eq('title', record.title);
+      
+      // 모든 선택된 항목 삭제
+      for (const record of selected) {
+        const { error: deleteError } = await supabase
+          .from('blog_records')
+          .delete()
+          .eq('id', record.id)
+          .eq('keyword', record.keyword)
+          .eq('title', record.title);
 
-      if (deleteError) throw deleteError;
+        if (deleteError) throw deleteError;
+      }
 
       // 로컬 상태 업데이트
-      setData((prev) => prev.filter((item) => 
-        !(item.id === record.id && item.keyword === record.keyword && item.title === record.title)
-      ));
+      setData((prev) => prev.filter((item) => {
+        const key = getRecordKey(item);
+        return !selectedRecords.has(key);
+      }));
       
-      setSuccess('삭제되었습니다.');
+      // 선택 초기화
+      setSelectedRecords(new Set());
+      
+      setSuccess(`${selected.length}개의 기록이 삭제되었습니다.`);
       setShowSuccessMessage(true);
       setTimeout(() => {
         setShowSuccessMessage(false);
@@ -150,6 +214,8 @@ export default function AdminTable({ initialData }: AdminTableProps) {
     } catch (err: any) {
       setError(err.message || '삭제 중 오류가 발생했습니다.');
       setShowSuccessMessage(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -170,7 +236,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
               ranking: editForm.ranking ? parseInt(String(editForm.ranking)) : null,
               search_volume: editForm.searchVolume ? parseInt(String(editForm.searchVolume)) : null,
               title: editForm.title,
-              link: editForm.link,
+              link: editForm.link || null, // 링크는 선택사항
               author: editForm.author || null,
               special_note: editForm.specialNote || null,
             })
@@ -192,6 +258,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
       );
       
       setEditingRecord(null);
+      setSelectedRecords(new Set());
       setSuccess('수정되었습니다.');
       setShowSuccessMessage(true);
       setTimeout(() => {
@@ -336,11 +403,44 @@ export default function AdminTable({ initialData }: AdminTableProps) {
         )}
       </div>
 
+      {/* 선택된 항목에 대한 액션 버튼 */}
+      {selectedRecords.size > 0 && (
+        <div className={styles.bulkActions}>
+          <div className={styles.bulkActionsInfo}>
+            {selectedRecords.size}개 항목 선택됨
+          </div>
+          <div className={styles.bulkActionsButtons}>
+            <button
+              className={`${styles.bulkActionButton} ${styles.editButton}`}
+              onClick={handleEdit}
+              disabled={selectedRecords.size !== 1 || isSubmitting}
+            >
+              수정
+            </button>
+            <button
+              className={`${styles.bulkActionButton} ${styles.deleteButton}`}
+              onClick={handleDelete}
+              disabled={isSubmitting}
+            >
+              삭제 ({selectedRecords.size})
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className={styles.tableContainer}>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead className={styles.tableHeader}>
               <tr>
+                <th style={{ width: '40px' }}>
+                  <input
+                    type="checkbox"
+                    checked={paginatedData.length > 0 && paginatedData.every((item) => selectedRecords.has(getRecordKey(item)))}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className={styles.checkbox}
+                  />
+                </th>
                 <th>아이디</th>
                 <th>분야</th>
                 <th>키워드</th>
@@ -350,67 +450,66 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                 <th>링크</th>
                 <th>작성자</th>
                 <th>특이사항</th>
-                <th>작업</th>
               </tr>
             </thead>
             <tbody className={styles.tableBody}>
               {paginatedData.length > 0 ? (
-                paginatedData.map((item, index) => (
-                  <tr key={`${item.id}-${index}`}>
-                    <td>{item.id}</td>
-                    <td>{item.field}</td>
-                    <td>{item.keyword}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {getMedalImage(item.ranking) ? (
-                          <>
-                            <img
-                              src={getMedalImage(item.ranking) || ''}
-                              alt={`${item.ranking}위 메달`}
-                              style={{ width: '24px', height: '24px', objectFit: 'contain' }}
-                            />
-                            <span>({item.ranking}위)</span>
-                          </>
+                paginatedData.map((item, index) => {
+                  const recordKey = getRecordKey(item);
+                  const isSelected = selectedRecords.has(recordKey);
+                  return (
+                    <tr key={`${item.id}-${index}`} className={isSelected ? styles.selectedRow : ''}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(item)}
+                          className={styles.checkbox}
+                        />
+                      </td>
+                      <td>{item.id}</td>
+                      <td>{item.field}</td>
+                      <td>{item.keyword}</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {getMedalImage(item.ranking) ? (
+                            <>
+                              <img
+                                src={getMedalImage(item.ranking) || ''}
+                                alt={`${item.ranking}위 메달`}
+                                style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                              />
+                              <span>({item.ranking}위)</span>
+                            </>
+                          ) : (
+                            <span>{item.ranking}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>{item.searchVolume.toLocaleString()}</td>
+                      <td>{item.title}</td>
+                      <td>
+                        {item.link ? (
+                          <a
+                            href={item.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={styles.link}
+                          >
+                            {item.link}
+                          </a>
                         ) : (
-                          <span>{item.ranking}</span>
+                          <span className={styles.noLink}>-</span>
                         )}
-                      </div>
-                    </td>
-                    <td>{item.searchVolume.toLocaleString()}</td>
-                    <td>{item.title}</td>
-                    <td>
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={styles.link}
-                      >
-                        {item.link}
-                      </a>
-                    </td>
-                    <td>{item.author}</td>
-                    <td>{item.specialNote || '-'}</td>
-                    <td>
-                      <div className={styles.actionButtons}>
-                        <button
-                          className={`${styles.actionButton} ${styles.editButton}`}
-                          onClick={() => handleEdit(item)}
-                        >
-                          수정
-                        </button>
-                        <button
-                          className={`${styles.actionButton} ${styles.deleteButton}`}
-                          onClick={() => handleDelete(item)}
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td>{item.author}</td>
+                      <td>{item.specialNote || '-'}</td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={10} className={styles.emptyState}>
+                  <td colSpan={11} className={styles.emptyState}>
                     <p>검색 결과가 없습니다.</p>
                   </td>
                 </tr>
