@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Vercel 서버리스 함수 설정
+// 무료 플랜(Hobby) 제한: 최대 10초 실행 시간, 1024MB 메모리
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 10; // 무료 플랜 최대값
 
 // Puppeteer 관련 타입 정의 (any를 피하기 위해)
 type Puppeteer = typeof import('puppeteer');
@@ -113,27 +114,55 @@ async function crawlNaverSearchWithPuppeteer(
   const url = `https://search.naver.com/search.naver?query=${encodeURIComponent(keyword)}`;
 
   try {
-    // Vercel 환경에 최적화된 실행 옵션 설정
+    // Vercel 환경에 최적화된 실행 옵션 설정 (무료 플랜 최적화)
     let launchOptions: any = {
-      headless: true, // Vercel 환경에서는 항상 true
-      timeout: isVercel ? 45000 : 60000,
+      headless: true,
+      timeout: isVercel ? 2500 : 60000, // 무료 플랜: 2.5초 타임아웃
     };
 
     if (isVercel && chromium) {
-      console.log('>>> Vercel 환경: @sparticuz/chromium 최적화 설정 적용');
-      // @sparticuz/chromium에서 권장하는 인자와 실행 경로 사용
-      launchOptions.args = chromium.args;
+      console.log('>>> Vercel 무료 플랜: 극도로 최적화된 설정 적용');
+      // @sparticuz/chromium에서 권장하는 인자 사용
+      launchOptions.args = [...chromium.args];
       launchOptions.executablePath = await chromium.executablePath();
       launchOptions.headless = chromium.headless; 
 
-      // 추가적인 메모리 절약 인자 (Vercel에서 안정성을 높이기 위해 추가)
+      // 메모리 및 성능 최적화 인자 (무료 플랜용)
       launchOptions.args.push(
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--single-process', 
-        '--no-zygote',
+        '--single-process', // 메모리 절약 (필수)
+        '--no-zygote', // 메모리 절약 (필수)
         '--disable-gpu',
-        '--window-size=1280,720', // 고정 크기로 리소스 사용 최소화
+        '--disable-software-rasterizer',
+        '--disable-dev-shm-usage',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-domain-reliability',
+        '--disable-features=TranslateUI',
+        '--disable-hang-monitor',
+        '--disable-ipc-flooding-protection',
+        '--disable-notifications',
+        '--disable-renderer-backgrounding',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-first-run',
+        '--no-pings',
+        '--use-mock-keychain',
+        '--hide-scrollbars',
+        '--ignore-certificate-errors',
+        '--ignore-ssl-errors',
+        '--ignore-certificate-errors-spki-list',
+        '--window-size=1024,768', // 더 작은 창 크기로 메모리 절약
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
       );
 
       console.log('>>> Chromium executablePath 설정 완료:', launchOptions.executablePath ? 'OK' : 'FAIL');
@@ -146,14 +175,18 @@ async function crawlNaverSearchWithPuppeteer(
       ];
     }
     
-    // Puppeteer를 헤드리스 모드로 실행
+    // Puppeteer를 헤드리스 모드로 실행 (무료 플랜: 빠른 실행)
     try {
-      browser = await puppeteer.launch(launchOptions);
+      console.log('>>> 브라우저 실행 시작 (타임아웃: 2.5초)');
+      const launchPromise = puppeteer.launch(launchOptions);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('브라우저 실행 타임아웃')), 2500)
+      );
+      browser = await Promise.race([launchPromise, timeoutPromise]) as any;
       console.log('>>> Puppeteer 브라우저 실행 성공');
     } catch (launchError: any) {
       console.error('>>> Puppeteer 브라우저 실행 실패:', launchError);
-      // 브라우저 실행 실패는 500 에러의 가장 흔한 원인입니다.
-      throw new Error(`Puppeteer 브라우저 실행 실패: (경로: ${launchOptions.executablePath || '기본값'}) ${launchError?.message || '알 수 없는 오류'}`);
+      throw new Error(`Puppeteer 브라우저 실행 실패: ${launchError?.message || '알 수 없는 오류'}`);
     } 
 
     const page = await browser.newPage();
@@ -161,51 +194,53 @@ async function crawlNaverSearchWithPuppeteer(
     // User-Agent 설정
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-    // 페이지 이동
-    const pageTimeout = isVercel ? 45000 : 60000;
+    // 페이지 이동 (무료 플랜: 초고속 로딩)
+    const pageTimeout = isVercel ? 3500 : 60000; // 무료 플랜: 3.5초만 대기
     console.log(`>>> 네이버 검색 페이지 로드 시도: ${url} (타임아웃: ${pageTimeout}ms)`);
     await page.goto(url, { 
       waitUntil: 'domcontentloaded',
       timeout: pageTimeout
     });
 
-    // --- 스크롤 로직 (동적 로딩) ---
-    let previousHeight;
-    let scrollCount = 0;
-    const maxScrolls = isVercel ? 3 : 10; // Vercel에서는 3회로 제한
-
-    while (scrollCount < maxScrolls) {
-      previousHeight = await page.evaluate('document.body.scrollHeight');
-      await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-      // 스크롤 후 동적 로딩을 위한 충분한 대기 시간
-      await new Promise(resolve => setTimeout(resolve, isVercel ? 1500 : 2000));
-      let newHeight = await page.evaluate('document.body.scrollHeight');
-      
-      if (newHeight === previousHeight) {
-        break; // 더 이상 스크롤할 내용이 없으면 중단
+    // --- 스크롤 로직 (최소화) ---
+    // 무료 플랜: 최소 스크롤만 (빠르게)
+    if (isVercel) {
+      // 빠른 스크롤 (스마트블록은 보통 상단에 있음)
+      await page.evaluate('window.scrollTo(0, 300)'); // 약간만 스크롤
+      await new Promise(resolve => setTimeout(resolve, 400)); // 짧은 대기
+    } else {
+      // 로컬: 기존 로직
+      let previousHeight;
+      let scrollCount = 0;
+      const maxScrolls = 10;
+      while (scrollCount < maxScrolls) {
+        previousHeight = await page.evaluate('document.body.scrollHeight');
+        await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        let newHeight = await page.evaluate('document.body.scrollHeight');
+        if (newHeight === previousHeight) break;
+        scrollCount++;
       }
-      scrollCount++;
     }
     // --- 스크롤 로직 종료 ---
 
     // 스마트블록 컨테이너를 찾기 위한 셀렉터
     const smartBlockSelectors = [
-      'a.jyxwDwu8umzdhCQxX48l', // 표준 스마트블록 링크 클래스
-      '.fds-flicking-augmentation a', // flicking 컨테이너 내 링크
+      'a.jyxwDwu8umzdhCQxX48l',
+      '.fds-flicking-augmentation a',
     ];
 
-    // 스마트블록이 로드될 때까지 대기
-    const selectorTimeout = isVercel ? 10000 : 15000; 
+    // 스마트블록 대기 (무료 플랜: 매우 짧은 대기)
+    const selectorTimeout = isVercel ? 2000 : 15000; // 무료 플랜: 2초만 대기
     try {
-        // 하나의 셀렉터라도 성공할 때까지 기다림
         await Promise.any(smartBlockSelectors.map(selector => 
             page.waitForSelector(selector, { timeout: selectorTimeout })
         ));
     } catch (e) {
-        console.log('>>> 지정된 시간 내에 스마트블록을 찾지 못했습니다. 현재 DOM 상태로 추출을 시도합니다.');
+        console.log('>>> 스마트블록 대기 시간 초과. 현재 DOM으로 추출 시도.');
     }
-    // 추가 대기 시간 (최종 렌더링을 위해)
-    await new Promise(resolve => setTimeout(resolve, isVercel ? 1000 : 2000));
+    // 최소 대기 (무료 플랜: 300ms)
+    await new Promise(resolve => setTimeout(resolve, isVercel ? 300 : 2000));
 
     const smartBlocks = await page.evaluate(() => {
       const results: any[] = [];
