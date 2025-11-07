@@ -81,6 +81,14 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.smartBlockTableContainer {
+  margin-bottom: 32px;
+}
+
+.smartBlockTableContainer:last-child {
+  margin-bottom: 0;
+}
+
 .smartBlockHeader {
   display: flex;
   justify-content: space-between;
@@ -223,9 +231,88 @@
   color: #6b7280;
 }
 
+.tableWrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.smartBlockTable {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+}
+
+.tableHeader {
+  background-color: #f9fafb;
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.tableHeader:first-child {
+  width: 40%;
+}
+
+.tableHeader:last-child {
+  width: 60%;
+}
+
+.tableCell {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+  color: #1f2937;
+  vertical-align: top;
+}
+
+.tableCell:first-child {
+  font-weight: 500;
+}
+
+.tableLink {
+  color: #2563eb;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.tableLink:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.tableContent {
+  color: #6b7280;
+  line-height: 1.6;
+  display: block;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.smartBlockTable tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+.smartBlockTable tbody tr:last-child .tableCell {
+  border-bottom: none;
+}
+
 @media (max-width: 768px) {
   .smartBlockGrid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tableWrapper {
+    font-size: 12px;
+  }
+
+  .tableHeader,
+  .tableCell {
+    padding: 8px 12px;
+    font-size: 12px;
   }
 }
 
@@ -240,6 +327,14 @@
   
   .searchButton {
     width: 100%;
+  }
+
+  .tableHeader:first-child {
+    width: 35%;
+  }
+
+  .tableHeader:last-child {
+    width: 65%;
   }
 }
 

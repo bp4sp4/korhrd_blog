@@ -473,16 +473,21 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {getMedalImage(item.ranking) ? (
-                            <>
-                              <img
-                                src={getMedalImage(item.ranking) || ''}
-                                alt={`${item.ranking}위 메달`}
-                                style={{ width: '24px', height: '24px', objectFit: 'contain' }}
-                              />
-                              <span>({item.ranking}위)</span>
-                            </>
+                            <img
+                              src={getMedalImage(item.ranking) || ''}
+                              alt={`${item.ranking}위 메달`}
+                              style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                            />
                           ) : (
-                            <span>{item.ranking}</span>
+                            <span>
+                              {item.ranking && item.ranking > 3 ? (
+                                <span style={{ color: '#9ca3af' }}>미노출</span>
+                              ) : item.ranking ? (
+                                item.ranking
+                              ) : (
+                                <span style={{ color: '#9ca3af' }}>미노출</span>
+                              )}
+                            </span>
                           )}
                         </div>
                       </td>

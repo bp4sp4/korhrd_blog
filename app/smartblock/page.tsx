@@ -5,6 +5,8 @@ import styles from './smartblock.module.css';
 
 interface SmartBlockItem {
   title: string;
+  content?: string;
+  link?: string;
   icon?: string;
   description?: string;
   category?: string;
@@ -24,8 +26,7 @@ export default function SmartBlockPage() {
   const [titleQuery, setTitleQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [smartBlockGroups, setSmartBlockGroups] = useState<SmartBlockGroup[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6;
+  const [hasSearched, setHasSearched] = useState(false);
 
   // 제목 검색 (네이버에서 제목 존재 여부 확인)
   const handleTitleSearch = () => {
@@ -51,7 +52,7 @@ export default function SmartBlockPage() {
     }
 
     setIsLoading(true);
-    setCurrentPage(1);
+    setHasSearched(false);
     
     try {
       const response = await fetch('/api/smartblock', {
@@ -69,33 +70,18 @@ export default function SmartBlockPage() {
 
       const data = await response.json();
       setSmartBlockGroups(data.smartBlocks || []);
-      
-      if (data.smartBlocks.length === 0) {
-        alert('스마트블록을 찾을 수 없습니다. HTML 파싱이 실패했을 수 있습니다.');
-      }
+      setHasSearched(true);
     } catch (error: any) {
       console.error('스마트블록 검색 중 오류 발생:', error);
       const errorMessage = error?.message || '스마트블록 검색 중 오류가 발생했습니다.';
       alert(errorMessage);
       setSmartBlockGroups([]);
+      setHasSearched(true);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleItemClick = (keyword: string) => {
-    const encodedQuery = encodeURIComponent(keyword);
-    const naverSearchUrl = `https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=${encodedQuery}`;
-    window.open(naverSearchUrl, '_blank');
-  };
-
-  // 모든 스마트블록 아이템을 평탄화
-  const allItems: SmartBlockItem[] = smartBlockGroups.flatMap(group => group.data);
-  const totalPages = Math.ceil(allItems.length / itemsPerPage);
-  const paginatedItems = allItems.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
 
   return (
     <div className={styles.container}>
@@ -159,74 +145,73 @@ export default function SmartBlockPage() {
       </div>
 
       {/* 스마트블록 결과 섹션 */}
-      {smartBlockGroups.length > 0 && (
-        <div className={styles.smartBlockSection}>
-          <div className={styles.smartBlockHeader}>
-            <h3 className={styles.smartBlockTitle}>
-              <span className={styles.infoIcon}>ℹ️</span>
-              함께 많이 찾는
-            </h3>
-            <span className={styles.totalCount}>
-              총 {allItems.length}개
-            </span>
-          </div>
+      {hasSearched && !isLoading && (
+        <>
+          {smartBlockGroups.length > 0 ? (
+            <div className={styles.smartBlockSection}>
+              {smartBlockGroups.map((group) => (
+                <div key={group.id} className={styles.smartBlockTableContainer}>
+                  <div className={styles.smartBlockHeader}>
+                    <h3 className={styles.smartBlockTitle}>
+                      {group.title}
+                    </h3>
+                    <span className={styles.totalCount}>
+                      총 {group.data.length}개
+                    </span>
+                  </div>
 
-          {allItems.length === 0 ? (
-            <div className={styles.emptyState}>
-              <p>관련 검색어가 없습니다.</p>
+                  {group.data.length === 0 ? (
+                    <div className={styles.emptyState}>
+                      <p>블로그 항목이 없습니다.</p>
+                    </div>
+                  ) : (
+                    <div className={styles.tableWrapper}>
+                      <table className={styles.smartBlockTable}>
+                        <thead>
+                          <tr>
+                            <th className={styles.tableHeader}>제목</th>
+                            <th className={styles.tableHeader}>내용</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.data.map((item, index) => (
+                            <tr key={index}>
+                              <td className={styles.tableCell}>
+                                {item.link ? (
+                                  <a
+                                    href={item.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={styles.tableLink}
+                                  >
+                                    {item.title}
+                                  </a>
+                                ) : (
+                                  <span>{item.title}</span>
+                                )}
+                              </td>
+                              <td className={styles.tableCell}>
+                                <span className={styles.tableContent}>
+                                  {item.content || '-'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           ) : (
-            <>
-              <div className={styles.smartBlockGrid}>
-                {paginatedItems.map((item, index) => {
-                  const globalIndex = (currentPage - 1) * itemsPerPage + index;
-                  return (
-                    <div
-                      key={globalIndex}
-                      className={styles.smartBlockItem}
-                      onClick={() => handleItemClick(item.title)}
-                    >
-                      <div className={styles.itemContent}>
-                        <span className={styles.keyword}>{item.title}</span>
-                        {item.tag && (
-                          <span className={`${styles.tag} ${item.tagType === 'personal' ? styles.tagPersonal : item.tagType === 'popular' ? styles.tagPopular : ''}`}>
-                            {item.tag}
-                          </span>
-                        )}
-                        {item.icon && (
-                          <span className={styles.itemIcon}>{item.icon}</span>
-                        )}
-                      </div>
-                      <div className={styles.searchIcon}>🔍</div>
-                    </div>
-                  );
-                })}
+            <div className={styles.smartBlockSection}>
+              <div className={styles.emptyState}>
+                <p>연관된 스마트블록이 없습니다.</p>
               </div>
-
-              {totalPages > 1 && (
-                <div className={styles.pagination}>
-                  <button
-                    className={styles.paginationButton}
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    &lt;
-                  </button>
-                  <span className={styles.paginationInfo}>
-                    {currentPage} / {totalPages}
-                  </span>
-                  <button
-                    className={styles.paginationButton}
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    &gt;
-                  </button>
-                </div>
-              )}
-            </>
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {isLoading && (

@@ -71,6 +71,10 @@ async function fetchNaverSearchResults(
     { key: 'webkr', endpoint: 'webkr' }
   ];
 
+  // 월 검색량 가져오기 (데이터랩 API)
+  const monthlySearchVolume = await fetchMonthlySearchVolume(keyword, clientId, clientSecret);
+  results.summary.monthlySearchVolume = monthlySearchVolume;
+
   for (const apiType of apiTypes) {
     try {
       const display = Math.min(count, 100); // API 최대값 100
@@ -143,6 +147,11 @@ async function fetchNaverSearchResults(
         const totalChars = formattedResults.reduce((sum: number, r: any) => sum + r.charCount, 0);
         results.summary.averageCharCount = Math.round(totalChars / formattedResults.length).toString();
         results.summary.monthlyPublicationCount = data.total?.toString() || '';
+        
+        // 키워드 주제 추론 (검색 결과 제목에서 자주 나오는 단어 분석)
+        if (!results.summary.keywordTopic && formattedResults.length > 0) {
+          results.summary.keywordTopic = extractKeywordTopic(formattedResults, keyword);
+        }
       }
     } catch (error) {
       console.error(`${apiType.key} API 호출 오류:`, error);
@@ -172,5 +181,101 @@ function formatDate(dateStr: string): string {
   if (diffDays === 0) return '오늘';
   if (diffDays === 1) return '1일 전';
   return `${diffDays}일 전`;
+}
+
+// 키워드 주제 추론 (검색 결과 제목 분석)
+function extractKeywordTopic(results: any[], keyword: string): string {
+  // 자주 사용되는 주제 키워드 패턴
+  const topicPatterns = [
+    { pattern: /교육|학원|강의|수업|학습/, topic: '교육' },
+    { pattern: /건강|병원|의료|치료|증상/, topic: '건강/의료' },
+    { pattern: /요리|레시피|음식|맛집/, topic: '요리/음식' },
+    { pattern: /여행|관광|호텔|숙박/, topic: '여행' },
+    { pattern: /뷰티|화장품|피부|스킨케어/, topic: '뷰티' },
+    { pattern: /패션|옷|스타일|코디/, topic: '패션' },
+    { pattern: /자격증|시험|합격/, topic: '자격증' },
+    { pattern: /취업|면접|이력서/, topic: '취업' },
+    { pattern: /투자|주식|부동산/, topic: '투자/금융' },
+    { pattern: /IT|프로그래밍|개발|코딩/, topic: 'IT/기술' },
+    { pattern: /게임|플레이|리뷰/, topic: '게임' },
+    { pattern: /책|독서|서평/, topic: '도서' },
+  ];
+
+  // 검색 결과 제목에서 패턴 매칭
+  const topicCounts: { [key: string]: number } = {};
+  
+  results.forEach((result) => {
+    const title = result.title || '';
+    topicPatterns.forEach(({ pattern, topic }) => {
+      if (pattern.test(title)) {
+        topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+      }
+    });
+  });
+
+  // 가장 많이 매칭된 주제 반환
+  const sortedTopics = Object.entries(topicCounts)
+    .sort((a, b) => b[1] - a[1]);
+  
+  if (sortedTopics.length > 0 && sortedTopics[0][1] >= 2) {
+    return sortedTopics[0][0];
+  }
+
+  return '';
+}
+
+// 네이버 데이터랩 API로 월 검색량 가져오기
+async function fetchMonthlySearchVolume(
+  keyword: string,
+  clientId: string,
+  clientSecret: string
+): Promise<string> {
+  try {
+    // 네이버 데이터랩 API 엔드포인트 (검색어 트렌드)
+    const url = `https://openapi.naver.com/v1/datalab/search`;
+    
+    const body = {
+      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0].replace(/-/g, ''),
+      endDate: new Date().toISOString().split('T')[0].replace(/-/g, ''),
+      timeUnit: 'month',
+      keywordGroups: [
+        {
+          groupName: keyword,
+          keywords: [keyword]
+        }
+      ]
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Naver-Client-Id': clientId,
+        'X-Naver-Client-Secret': clientSecret,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.results && data.results.length > 0 && data.results[0].data) {
+        // 최근 월의 검색량 데이터 (ratio는 상대값이므로 평균이나 최신값 사용)
+        const monthlyData = data.results[0].data;
+        if (monthlyData.length > 0) {
+          // 최신 월 데이터의 ratio 사용 (상대값)
+          const latestRatio = monthlyData[monthlyData.length - 1].ratio || 0;
+          // 상대값을 문자열로 반환 (실제 검색량은 데이터랩에서 제공하지 않음)
+          return latestRatio > 0 ? `${Math.round(latestRatio)}` : '';
+        }
+      }
+    } else {
+      // 데이터랩 API가 실패하면 빈 문자열 반환 (월 검색량은 선택사항)
+      console.log('데이터랩 API 응답 실패:', response.status);
+    }
+  } catch (error) {
+    console.error('데이터랩 API 호출 오류:', error);
+  }
+  
+  return '';
 }
 

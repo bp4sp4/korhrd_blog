@@ -144,7 +144,7 @@ export default function KeywordPage() {
                 <span className={styles.summaryValue}>{searchData.summary.monthlySearchVolume || '-'}</span>
               </div>
               <div className={styles.summaryItem}>
-                <span className={styles.summaryLabel}>월 발행수</span>
+                <span className={styles.summaryLabel}>총 검색 결과 수</span>
                 <span className={styles.summaryValue}>{searchData.summary.monthlyPublicationCount || '-'}</span>
               </div>
               <div className={styles.summaryItem}>

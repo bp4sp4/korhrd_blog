@@ -244,87 +244,63 @@ async function crawlNaverSearchWithPuppeteer(
 
     const smartBlocks = await page.evaluate(() => {
       const results: any[] = [];
+      const extractedTitles = new Set<string>();
+      const items: any[] = [];
 
-      // 스마트블록 컨테이너들 찾기 (각 탭) - 최대 3개
-      const collectionRoots = document.querySelectorAll('.fds-collection-root');
-      const maxBlocks = Math.min(3, collectionRoots.length); // 최대 3개 처리
+      // 스마트블록 링크 찾기 (여러 셀렉터 시도)
+      const smartBlockLinks = document.querySelectorAll(
+        'a.jyxwDwu8umzdhCQxX48l, ' +
+        '.fds-flicking-augmentation a[href*="query="]'
+      );
 
-      for (let index = 0; index < maxBlocks; index++) {
-        const collectionRoot = collectionRoots[index] as Element;
-        
-        // 스마트블록 탭 제목 추출 (여러 셀렉터 시도)
-        let blockTitle = '';
-        
-        // 방법 1: 기본 셀렉터
-        const headlineElement = collectionRoot.querySelector('.fds-comps-header-headline .fds-comps-text');
-        if (headlineElement) {
-          blockTitle = headlineElement.textContent?.trim() || '';
+      smartBlockLinks.forEach((link: Element) => {
+        // 검색어 텍스트 추출 (주요 키워드)
+        const textElement = link.querySelector('span.sds-comps-ellipsis-content');
+        if (!textElement) return;
+
+        // mark 태그를 제거하고 순수 텍스트만 추출하는 로직은 복잡하므로,
+        // 현재는 텍스트를 포함하는 가장 안전한 방식으로 추출합니다.
+        const originalText = textElement.textContent?.trim() || '';
+        let text = originalText.replace(/\s+/g, ' ').trim();
+
+        if (!text || text.length < 1 || extractedTitles.has(text)) {
+          return;
         }
+
+        // 태그 추출 (박상훈님을 위한, 요즘 인기 등)
+        let tag: string | undefined;
+        let tagType: 'personal' | 'popular' | undefined;
         
-        // 방법 2: 직접 클래스로 찾기
-        if (!blockTitle) {
-          const headlineDirect = collectionRoot.querySelector('.fds-comps-header-headline');
-          if (headlineDirect) {
-            blockTitle = headlineDirect.textContent?.trim() || '';
-          }
-        }
-        
-        // 방법 3: zGAg4BVegdEEkSYCTjAo 클래스로 찾기
-        if (!blockTitle) {
-          const altHeadline = collectionRoot.querySelector('.zGAg4BVegdEEkSYCTjAo .fds-comps-text');
-          if (altHeadline) {
-            blockTitle = altHeadline.textContent?.trim() || '';
-          }
-        }
-        
-        // 방법 4: LesvR5EImSth_zBjoUn2 클래스로 찾기
-        if (!blockTitle) {
-          const altHeadline2 = collectionRoot.querySelector('.LesvR5EImSth_zBjoUn2 .fds-comps-text');
-          if (altHeadline2) {
-            blockTitle = altHeadline2.textContent?.trim() || '';
+        const badgeElement = link.querySelector('span.sds-comps-text-type-badge');
+        if (badgeElement) {
+          const badgeText = badgeElement.textContent?.trim() || '';
+          tag = badgeText;
+          if (badgeText.includes('님을 위한')) {
+            tagType = 'personal';
+          } else if (badgeText.includes('인기')) {
+            tagType = 'popular';
           }
         }
 
-        // 기본값 설정
-        if (!blockTitle) {
-          blockTitle = `스마트블록 ${index + 1}`;
-        }
-
-        // 블로그 아이템들 찾기
-        const blogItems: any[] = [];
-        const blogModules = collectionRoot.querySelectorAll('.fds-ugc-block-mod');
-
-        blogModules.forEach((module: Element) => {
-          // 블로그 제목 추출
-          const titleElement = module.querySelector('.fds-comps-right-image-text-title .fds-comps-text');
-          const blogTitle = titleElement?.textContent?.trim() || '';
-
-          // 블로그 내용 추출
-          const contentElement = module.querySelector('.fds-comps-right-image-text-content .fds-comps-text');
-          const blogContent = contentElement?.textContent?.trim() || '';
-
-          // 블로그 링크 추출
-          const titleLink = module.querySelector('.fds-comps-right-image-text-title') as HTMLAnchorElement;
-          const blogLink = titleLink?.href || '';
-
-          if (blogTitle) {
-            blogItems.push({
-              title: blogTitle,
-              content: blogContent, // 내용 전체 가져오기
-              link: blogLink,
-            });
-          }
+        items.push({
+          title: text,
+          tag: tag,
+          tagType: tagType,
+          icon: tagType === 'popular' ? '🔥' : tagType === 'personal' ? '⭐' : '💡',
+          description: `${text} 관련 정보`,
         });
 
-        if (blockTitle && blogItems.length > 0) {
-          results.push({
-            id: `smart_block_${index}_${Date.now()}`,
-            title: blockTitle,
-            icon: '📋',
-            type: 'table',
-            data: blogItems
-          });
-        }
+        extractedTitles.add(text);
+      });
+
+      if (items.length > 0) {
+        results.push({
+          id: 'smart_block_' + Date.now(),
+          title: '함께 많이 찾는',
+          icon: '💡',
+          type: 'topics',
+          data: items
+        });
       }
 
       return results;
@@ -344,3 +320,4 @@ async function crawlNaverSearchWithPuppeteer(
     }
   }
 }
+
