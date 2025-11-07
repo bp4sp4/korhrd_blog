@@ -1,4 +1,4 @@
-.userListContainer {
+.teamListContainer {
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -61,34 +61,7 @@
   border-right: none;
 }
 
-.roleBadge {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.roleBadge.superAdmin {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-.roleBadge.admin {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.roleBadge.user {
-  background-color: #e5e7eb;
-  color: #6b7280;
-}
-
-.actionButtons {
-  display: flex;
-  gap: 8px;
-}
-
-.actionButton {
+.deleteButton {
   padding: 6px 12px;
   border: none;
   border-radius: 4px;
@@ -96,37 +69,36 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
-}
-
-.toggleAdminButton {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.toggleAdminButton:hover {
-  background-color: #2563eb;
-}
-
-.toggleAdminButton.danger {
-  background-color: #ef4444;
-}
-
-.toggleAdminButton.danger:hover {
-  background-color: #dc2626;
-}
-
-.deleteUserButton {
   background-color: #ef4444;
   color: white;
 }
 
-.deleteUserButton:hover {
+.deleteButton:hover {
   background-color: #dc2626;
 }
 
-.deleteUserButton:disabled {
+.deleteButton:disabled,
+.deleteButton.deleting {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.emptyState {
+  padding: 48px;
+  text-align: center;
+  color: #9ca3af;
+}
+
+.emptyState p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.loading {
+  padding: 48px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
 }
 
 .error {
@@ -145,16 +117,5 @@
   padding: 12px;
   background-color: #f0fdf4;
   border-radius: 6px;
-}
-
-.emptyState {
-  padding: 48px;
-  text-align: center;
-  color: #9ca3af;
-}
-
-.emptyState p {
-  margin: 0;
-  font-size: 14px;
 }
 

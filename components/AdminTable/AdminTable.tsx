@@ -24,9 +24,12 @@ const FIELDS = [
 
 interface AdminTableProps {
   initialData: TableData[];
+  userRole?: string;
+  userTeamId?: string | null;
+  userName?: string | null;
 }
 
-export default function AdminTable({ initialData }: AdminTableProps) {
+export default function AdminTable({ initialData, userRole = 'member', userTeamId = null, userName = null }: AdminTableProps) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
   const [filters, setFilters] = useState({
@@ -155,10 +158,50 @@ export default function AdminTable({ initialData }: AdminTableProps) {
       return;
     }
     const record = selected[0];
+    
+    // 권한 체크
+    if (!canModifyRecord(record)) {
+      setError('이 항목을 수정할 권한이 없습니다. (자기 팀의 데이터 또는 자기 작성 데이터만 수정 가능)');
+      return;
+    }
+    
     setEditingRecord(record);
     setEditForm(record);
     setError('');
     setSuccess('');
+  };
+
+  // 권한 체크 함수
+  const canModifyRecord = (record: TableData): boolean => {
+    // super_admin은 모든 데이터 수정/삭제 가능
+    if (userRole === 'super_admin') {
+      return true;
+    }
+    
+    // admin은 자기 팀의 데이터 또는 자기 작성 데이터 수정/삭제 가능
+    if (userRole === 'admin') {
+      // 자기 작성 데이터인지 확인
+      const isAuthor = userName && record.author && 
+        userName.trim() === record.author.trim();
+      if (isAuthor) {
+        return true;
+      }
+      // 자기 팀의 데이터인지 확인
+      if (userTeamId && record.teamId) {
+        return userTeamId === record.teamId;
+      }
+      return false;
+    }
+    
+    // member는 자기 작성 데이터만 수정/삭제 가능
+    if (userRole === 'member') {
+      if (!userName || !record.author) {
+        return false;
+      }
+      return userName.trim() === record.author.trim();
+    }
+    
+    return false;
   };
 
   const handleDelete = async () => {
@@ -168,9 +211,23 @@ export default function AdminTable({ initialData }: AdminTableProps) {
       return;
     }
 
-    const confirmMessage = selected.length === 1
-      ? `"${selected[0].title}" 기록을 정말 삭제하시겠습니까?`
-      : `선택한 ${selected.length}개의 기록을 정말 삭제하시겠습니까?`;
+    // 권한 체크: 삭제할 수 없는 항목 필터링
+    const deletableRecords = selected.filter(canModifyRecord);
+    const nonDeletableRecords = selected.filter(record => !canModifyRecord(record));
+
+    if (nonDeletableRecords.length > 0) {
+      setError(`${nonDeletableRecords.length}개의 항목은 삭제할 권한이 없습니다. (자기 팀의 데이터 또는 자기 작성 데이터만 삭제 가능)`);
+      return;
+    }
+
+    if (deletableRecords.length === 0) {
+      setError('삭제할 수 있는 항목이 없습니다.');
+      return;
+    }
+
+    const confirmMessage = deletableRecords.length === 1
+      ? `"${deletableRecords[0].title}" 기록을 정말 삭제하시겠습니까?`
+      : `선택한 ${deletableRecords.length}개의 기록을 정말 삭제하시겠습니까?`;
 
     if (!confirm(confirmMessage)) return;
 
@@ -181,8 +238,8 @@ export default function AdminTable({ initialData }: AdminTableProps) {
     try {
       const supabase = createClient();
       
-      // 모든 선택된 항목 삭제
-      for (const record of selected) {
+      // 권한이 있는 항목만 삭제
+      for (const record of deletableRecords) {
         const { error: deleteError } = await supabase
           .from('blog_records')
           .delete()
@@ -202,7 +259,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
       // 선택 초기화
       setSelectedRecords(new Set());
       
-      setSuccess(`${selected.length}개의 기록이 삭제되었습니다.`);
+      setSuccess(`${deletableRecords.length}개의 기록이 삭제되었습니다.`);
       setShowSuccessMessage(true);
       setTimeout(() => {
         setShowSuccessMessage(false);
@@ -221,6 +278,12 @@ export default function AdminTable({ initialData }: AdminTableProps) {
 
   const handleUpdate = async () => {
     if (!editingRecord) return;
+
+    // 권한 체크
+    if (!canModifyRecord(editingRecord)) {
+      setError('이 항목을 수정할 권한이 없습니다. (자기 팀의 데이터 또는 자기 작성 데이터만 수정 가능)');
+      return;
+    }
 
     setIsSubmitting(true);
     setError('');
@@ -457,6 +520,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                 paginatedData.map((item, index) => {
                   const recordKey = getRecordKey(item);
                   const isSelected = selectedRecords.has(recordKey);
+                  const canModify = canModifyRecord(item);
                   return (
                     <tr key={`${item.id}-${index}`} className={isSelected ? styles.selectedRow : ''}>
                       <td>
@@ -465,6 +529,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
                           checked={isSelected}
                           onChange={() => handleToggleSelect(item)}
                           className={styles.checkbox}
+                          disabled={!canModify}
                         />
                       </td>
                       <td>{item.id}</td>

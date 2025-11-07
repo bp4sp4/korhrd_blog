@@ -13,18 +13,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is admin
+    // Check if user is super_admin
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_admin')
+      .select('role')
       .eq('id', user.id)
       .single();
 
-    if (!profile?.is_admin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (profile?.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden: Only super admin can create users' }, { status: 403 });
     }
 
-    const { email, password, name, isAdmin } = await request.json();
+    const { email, password, name, teamId, role } = await request.json();
 
     if (!email || !password || !name) {
       return NextResponse.json(
@@ -48,6 +48,10 @@ export async function POST(request: NextRequest) {
     if (authData.user) {
       // 트리거가 자동으로 프로필을 생성하므로, 약간의 지연 후 is_admin 업데이트
       // 또는 UPSERT를 사용하여 프로필이 없으면 생성, 있으면 업데이트
+      // Determine role and is_admin
+      const userRole = role || 'member';
+      const isAdmin = userRole === 'super_admin' || userRole === 'admin';
+
       const { error: profileError } = await adminClient
         .from('profiles')
         .upsert(
@@ -55,7 +59,9 @@ export async function POST(request: NextRequest) {
             id: authData.user.id,
             email,
             name,
-            is_admin: isAdmin || false,
+            is_admin: isAdmin,
+            role: userRole,
+            team_id: teamId || null,
           },
           {
             onConflict: 'id',

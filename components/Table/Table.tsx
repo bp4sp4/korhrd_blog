@@ -13,6 +13,7 @@ export interface TableData {
   link: string;
   author: string;
   specialNote?: string;
+  teamId?: string | null;
 }
 
 interface TableProps {

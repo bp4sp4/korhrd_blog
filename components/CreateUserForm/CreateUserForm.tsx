@@ -1,25 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import styles from './CreateUserForm.module.css';
+
+interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+}
 
 export default function CreateUserForm() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     name: '',
-    isAdmin: false,
+    teamId: '',
+    role: 'member' as 'super_admin' | 'admin' | 'member',
   });
+  const [teams, setTeams] = useState<Team[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [loadingTeams, setLoadingTeams] = useState(true);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+  useEffect(() => {
+    const fetchTeams = async () => {
+      try {
+        const response = await fetch('/api/admin/teams');
+        const result = await response.json();
+        if (response.ok) {
+          setTeams(result.teams || []);
+        }
+      } catch (err) {
+        console.error('Error fetching teams:', err);
+      } finally {
+        setLoadingTeams(false);
+      }
+    };
+    fetchTeams();
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: value,
     }));
     setError('');
     setSuccess('');
@@ -47,7 +73,8 @@ export default function CreateUserForm() {
           email: formData.email,
           password: formData.password,
           name: formData.name,
-          isAdmin: formData.isAdmin,
+          teamId: formData.teamId || null,
+          role: formData.role,
         }),
       });
 
@@ -62,7 +89,8 @@ export default function CreateUserForm() {
         email: '',
         password: '',
         name: '',
-        isAdmin: false,
+        teamId: '',
+        role: 'member',
       });
       
       // 페이지 새로고침하여 계정 목록 업데이트
@@ -119,17 +147,37 @@ export default function CreateUserForm() {
             />
           </div>
           <div className={styles.formGroup}>
-            <label className={styles.label}>권한</label>
-            <div className={styles.checkboxGroup}>
-              <input
-                type="checkbox"
-                name="isAdmin"
-                className={styles.checkbox}
-                checked={formData.isAdmin}
-                onChange={handleChange}
-              />
-              <span>관리자 권한 부여</span>
-            </div>
+            <label className={styles.label}>팀</label>
+            <select
+              name="teamId"
+              className={styles.select}
+              value={formData.teamId}
+              onChange={handleChange}
+            >
+              <option value="">팀 선택 (선택사항)</option>
+              {loadingTeams ? (
+                <option disabled>로딩 중...</option>
+              ) : (
+                teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>역할</label>
+            <select
+              name="role"
+              className={styles.select}
+              value={formData.role}
+              onChange={handleChange}
+            >
+              <option value="member">팀원</option>
+              <option value="admin">관리자</option>
+              <option value="super_admin">최고관리자</option>
+            </select>
           </div>
         </div>
         {error && <div className={styles.error}>{error}</div>}
@@ -143,7 +191,8 @@ export default function CreateUserForm() {
                 email: '',
                 password: '',
                 name: '',
-                isAdmin: false,
+                teamId: '',
+                role: 'member',
               });
               setError('');
               setSuccess('');

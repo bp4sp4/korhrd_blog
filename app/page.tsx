@@ -27,6 +27,7 @@ async function getRecords(): Promise<TableData[]> {
     link: record.link,
     author: record.author || '',
     specialNote: record.special_note || '',
+    teamId: record.team_id || null,
   }));
 }
 
@@ -39,19 +40,23 @@ async function getUserInfo() {
   let email: string | null = null;
   let isAdmin = false;
   let userName: string | null = null;
+  let userRole: string | null = null;
+  let userTeamId: string | null = null;
 
   if (user) {
     email = user.email || null;
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_admin, name')
+      .select('is_admin, name, role, team_id')
       .eq('id', user.id)
       .single();
     isAdmin = profile?.is_admin || false;
     userName = profile?.name || email?.split('@')[0] || null;
+    userRole = profile?.role || 'member';
+    userTeamId = profile?.team_id || null;
   }
 
-  return { email, isAdmin, userName };
+  return { email, isAdmin, userName, userRole, userTeamId };
 }
 
 export default async function Home() {
@@ -66,13 +71,19 @@ export default async function Home() {
   }
 
   const records = await getRecords();
-  const { email, isAdmin, userName } = await getUserInfo();
+  const { email, isAdmin, userName, userRole, userTeamId } = await getUserInfo();
 
   return (
     <div>
       <UserInfo email={email} isAdmin={isAdmin} />
       <AddRecordButton currentUserName={userName} />
-      <TableClient data={records} isAdmin={isAdmin} currentUserName={userName} />
+      <TableClient 
+        data={records} 
+        isAdmin={isAdmin} 
+        currentUserName={userName}
+        userRole={userRole || 'member'}
+        userTeamId={userTeamId}
+      />
     </div>
   );
 }

@@ -39,9 +39,11 @@ interface TableClientProps {
   data: TableData[];
   isAdmin?: boolean;
   currentUserName?: string | null;
+  userRole?: string;
+  userTeamId?: string | null;
 }
 
-export default function TableClient({ data, isAdmin = false, currentUserName }: TableClientProps) {
+export default function TableClient({ data, isAdmin = false, currentUserName, userRole = 'member', userTeamId = null }: TableClientProps) {
   const router = useRouter();
 
   const [filters, setFilters] = useState({
@@ -141,7 +143,51 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
     });
   };
 
+  // 권한 체크 함수
+  const canModifyRecord = (record: TableData): boolean => {
+    // super_admin은 모든 데이터 수정/삭제 가능
+    if (userRole === 'super_admin') {
+      return true;
+    }
+    
+    // admin은 자기 팀의 데이터 또는 자기 작성 데이터 수정/삭제 가능
+    if (userRole === 'admin') {
+      // 자기 작성 데이터인지 확인
+      const isAuthor = currentUserName && record.author && 
+        currentUserName.trim() === record.author.trim();
+      if (isAuthor) {
+        return true;
+      }
+      // 자기 팀의 데이터인지 확인
+      if (userTeamId && record.teamId) {
+        return userTeamId === record.teamId;
+      }
+      return false;
+    }
+    
+    // member는 자기 작성 데이터만 수정/삭제 가능
+    if (userRole === 'member') {
+      if (!currentUserName || !record.author) {
+        return false;
+      }
+      return currentUserName.trim() === record.author.trim();
+    }
+    
+    // 기존 isAdmin 체크 (하위 호환성)
+    if (isAdmin) {
+      return true;
+    }
+    
+    return false;
+  };
+
   const handleEdit = (record: TableData) => {
+    // 권한 체크
+    if (!canModifyRecord(record)) {
+      setError('이 항목을 수정할 권한이 없습니다. (자기 팀의 데이터 또는 자기 작성 데이터만 수정 가능)');
+      return;
+    }
+    
     setEditingRecord(record);
     setEditForm(record);
     setError('');
@@ -156,6 +202,12 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
   };
 
   const handleDelete = async (record: TableData) => {
+    // 권한 체크
+    if (!canModifyRecord(record)) {
+      setError('이 항목을 삭제할 권한이 없습니다. (자기 팀의 데이터 또는 자기 작성 데이터만 삭제 가능)');
+      return;
+    }
+
     if (!confirm(`"${record.title}" 기록을 정말 삭제하시겠습니까?`)) return;
 
     try {
@@ -193,6 +245,12 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
 
   const handleUpdate = async () => {
     if (!editingRecord) return;
+
+    // 권한 체크
+    if (!canModifyRecord(editingRecord)) {
+      setError('이 항목을 수정할 권한이 없습니다. (자기 팀의 데이터 또는 자기 작성 데이터만 수정 가능)');
+      return;
+    }
 
     setIsSubmitting(true);
     setError('');
@@ -375,12 +433,8 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
                 return selectedRecords.has(recordKey);
               });
               
-              // 선택된 항목 중 수정 가능한 항목만 필터링
-              const editableItems = selectedItems.filter(item => {
-                const isAuthor = item.author && currentUserName && 
-                  item.author.trim() === currentUserName.trim();
-                return isAdmin || isAuthor;
-              });
+              // 선택된 항목 중 수정 가능한 항목만 필터링 (권한 체크)
+              const editableItems = selectedItems.filter(item => canModifyRecord(item));
 
               if (editableItems.length === 0) return null;
 
@@ -483,11 +537,8 @@ export default function TableClient({ data, isAdmin = false, currentUserName }: 
                 paginatedData.flatMap((item, index) => {
                   const recordKey = `${item.id}-${item.keyword}-${item.title}`;
                   const isChecked = selectedRecords.has(recordKey);
-                  // 권한 체크: 관리자이거나 작성자가 본인인 경우
-                  // 현재 사용자의 name과 기록의 author를 비교
-                  const isAuthor = item.author && currentUserName && 
-                    item.author.trim() === currentUserName.trim();
-                  const canEdit = isAdmin || isAuthor;
+                  // 권한 체크 함수 사용
+                  const canEdit = canModifyRecord(item);
                   
                   return (
                     <tr key={`${item.id}-${index}`}>
