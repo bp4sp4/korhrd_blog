@@ -18,7 +18,10 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.logo}>
+      <div 
+        className={styles.logo}
+        onClick={() => handleNavClick('/')}
+      >
         <span className={styles.img}><img src="/logo.png" alt="logo" /></span>
       </div>
 

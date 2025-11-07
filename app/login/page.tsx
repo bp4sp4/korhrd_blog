@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import styles from './login.module.css';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,7 +40,7 @@ export default function LoginPage() {
     <div className={styles.container}>
       <div className={styles.loginCard}>
         <div className={styles.logoContainer}>
-          <div className={styles.img}><img src="/logo.png" alt="logo" /></div>
+          <Link href="/"><div className={styles.img}><img src="/logo.png" alt="logo" /></div></Link>
         </div>
 
         <form onSubmit={handleLogin} className={styles.form}>
