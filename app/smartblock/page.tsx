@@ -24,7 +24,6 @@ export default function SmartBlockPage() {
   const [titleQuery, setTitleQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [smartBlockGroups, setSmartBlockGroups] = useState<SmartBlockGroup[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
@@ -40,44 +39,26 @@ export default function SmartBlockPage() {
     window.open(naverSearchUrl, '_blank');
   };
 
-  // 스마트블록 검색 (실제 크롤링)
-  const handleSmartBlockSearch = async () => {
+  // 스마트블록 검색 (클라이언트 사이드 처리)
+  const handleSmartBlockSearch = () => {
     if (!searchQuery.trim()) {
       alert('검색어를 입력해주세요.');
       return;
     }
 
-    setIsLoading(true);
-    setCurrentPage(1);
+    // 네이버 검색 페이지로 직접 이동 (새 탭)
+    const encodedQuery = encodeURIComponent(searchQuery.trim());
+    const naverSearchUrl = `https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=${encodedQuery}`;
     
-    try {
-      const response = await fetch('/api/smartblock', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ keyword: searchQuery.trim() }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        // Vercel 환경에서의 특별한 처리
-        if (errorData.isVercel) {
-          throw new Error(errorData.error || '배포 환경에서는 스마트블록 기능을 사용할 수 없습니다.');
-        }
-        throw new Error(errorData.error || errorData.details || '스마트블록 데이터를 가져오는데 실패했습니다.');
-      }
-
-      const data = await response.json();
-      setSmartBlockGroups(data.smartBlocks || []);
-    } catch (error: any) {
-      console.error('스마트블록 검색 중 오류 발생:', error);
-      const errorMessage = error?.message || '스마트블록 검색 중 오류가 발생했습니다.';
-      alert(errorMessage);
-      setSmartBlockGroups([]);
-    } finally {
-      setIsLoading(false);
-    }
+    // 새 탭에서 네이버 검색 결과 열기
+    window.open(naverSearchUrl, '_blank');
+    
+    // 사용자에게 안내 메시지 표시
+    alert('네이버 검색 결과 페이지가 새 탭에서 열렸습니다.\n검색 결과 페이지에서 "함께 많이 찾는" 스마트블록을 직접 확인하세요.');
+    
+    // 스마트블록 데이터는 클라이언트에서 직접 가져올 수 없으므로 빈 배열로 설정
+    // 대신 사용자가 직접 확인할 수 있도록 안내
+    setSmartBlockGroups([]);
   };
 
   const handleItemClick = (keyword: string) => {
@@ -145,13 +126,13 @@ export default function SmartBlockPage() {
           <button
             className={styles.searchButton}
             onClick={handleSmartBlockSearch}
-            disabled={isLoading}
           >
-            {isLoading ? '검색 중...' : '스마트블록 가져오기'}
+            네이버에서 검색하기
           </button>
         </div>
         <p className={styles.description}>
-          검색어를 입력하고 버튼을 클릭하면 네이버 검색 결과의 스마트블록(함께 많이 찾는) 데이터를 가져옵니다.
+          검색어를 입력하고 버튼을 클릭하면 네이버 검색 결과 페이지가 새 탭에서 열립니다. 
+          검색 결과 페이지에서 "함께 많이 찾는" 스마트블록을 직접 확인할 수 있습니다.
         </p>
       </div>
 
@@ -226,11 +207,6 @@ export default function SmartBlockPage() {
         </div>
       )}
 
-      {isLoading && (
-        <div className={styles.loadingState}>
-          <p>스마트블록 데이터를 가져오는 중...</p>
-        </div>
-      )}
     </div>
   );
 }
