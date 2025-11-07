@@ -39,26 +39,46 @@ export default function SmartBlockPage() {
     window.open(naverSearchUrl, '_blank');
   };
 
-  // 스마트블록 검색 (클라이언트 사이드 처리)
-  const handleSmartBlockSearch = () => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 스마트블록 검색 (HTML 파싱 방식)
+  const handleSmartBlockSearch = async () => {
     if (!searchQuery.trim()) {
       alert('검색어를 입력해주세요.');
       return;
     }
 
-    // 네이버 검색 페이지로 직접 이동 (새 탭)
-    const encodedQuery = encodeURIComponent(searchQuery.trim());
-    const naverSearchUrl = `https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=${encodedQuery}`;
+    setIsLoading(true);
+    setCurrentPage(1);
     
-    // 새 탭에서 네이버 검색 결과 열기
-    window.open(naverSearchUrl, '_blank');
-    
-    // 사용자에게 안내 메시지 표시
-    alert('네이버 검색 결과 페이지가 새 탭에서 열렸습니다.\n검색 결과 페이지에서 "함께 많이 찾는" 스마트블록을 직접 확인하세요.');
-    
-    // 스마트블록 데이터는 클라이언트에서 직접 가져올 수 없으므로 빈 배열로 설정
-    // 대신 사용자가 직접 확인할 수 있도록 안내
-    setSmartBlockGroups([]);
+    try {
+      const response = await fetch('/api/smartblock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ keyword: searchQuery.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.details || '스마트블록 데이터를 가져오는데 실패했습니다.');
+      }
+
+      const data = await response.json();
+      setSmartBlockGroups(data.smartBlocks || []);
+      
+      if (data.smartBlocks.length === 0) {
+        alert('스마트블록을 찾을 수 없습니다. HTML 파싱이 실패했을 수 있습니다.');
+      }
+    } catch (error: any) {
+      console.error('스마트블록 검색 중 오류 발생:', error);
+      const errorMessage = error?.message || '스마트블록 검색 중 오류가 발생했습니다.';
+      alert(errorMessage);
+      setSmartBlockGroups([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleItemClick = (keyword: string) => {
@@ -126,13 +146,13 @@ export default function SmartBlockPage() {
           <button
             className={styles.searchButton}
             onClick={handleSmartBlockSearch}
+            disabled={isLoading}
           >
-            네이버에서 검색하기
+            {isLoading ? '검색 중...' : '스마트블록 가져오기'}
           </button>
         </div>
         <p className={styles.description}>
-          검색어를 입력하고 버튼을 클릭하면 네이버 검색 결과 페이지가 새 탭에서 열립니다. 
-          검색 결과 페이지에서 "함께 많이 찾는" 스마트블록을 직접 확인할 수 있습니다.
+          검색어를 입력하고 버튼을 클릭하면 네이버 검색 결과에서 스마트블록(함께 많이 찾는) 데이터를 HTML 파싱으로 가져옵니다.
         </p>
       </div>
 
@@ -207,6 +227,11 @@ export default function SmartBlockPage() {
         </div>
       )}
 
+      {isLoading && (
+        <div className={styles.loadingState}>
+          <p>스마트블록 데이터를 가져오는 중...</p>
+        </div>
+      )}
     </div>
   );
 }
