@@ -43,9 +43,7 @@ async function fetchNaverSearchResults(
 ) {
   const results: any = {
     summary: {
-      monthlySearchVolume: '',
       monthlyPublicationCount: '',
-      blockOrder: '',
       keywordTopic: '',
       keywordType: '',
       autocompletion: '',
@@ -70,10 +68,6 @@ async function fetchNaverSearchResults(
     { key: 'cafearticle', endpoint: 'cafearticle' },
     { key: 'webkr', endpoint: 'webkr' }
   ];
-
-  // 월 검색량 가져오기 (데이터랩 API)
-  const monthlySearchVolume = await fetchMonthlySearchVolume(keyword, clientId, clientSecret);
-  results.summary.monthlySearchVolume = monthlySearchVolume;
 
   for (const apiType of apiTypes) {
     try {
@@ -221,61 +215,6 @@ function extractKeywordTopic(results: any[], keyword: string): string {
     return sortedTopics[0][0];
   }
 
-  return '';
-}
-
-// 네이버 데이터랩 API로 월 검색량 가져오기
-async function fetchMonthlySearchVolume(
-  keyword: string,
-  clientId: string,
-  clientSecret: string
-): Promise<string> {
-  try {
-    // 네이버 데이터랩 API 엔드포인트 (검색어 트렌드)
-    const url = `https://openapi.naver.com/v1/datalab/search`;
-    
-    const body = {
-      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0].replace(/-/g, ''),
-      endDate: new Date().toISOString().split('T')[0].replace(/-/g, ''),
-      timeUnit: 'month',
-      keywordGroups: [
-        {
-          groupName: keyword,
-          keywords: [keyword]
-        }
-      ]
-    };
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-Naver-Client-Id': clientId,
-        'X-Naver-Client-Secret': clientSecret,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.results && data.results.length > 0 && data.results[0].data) {
-        // 최근 월의 검색량 데이터 (ratio는 상대값이므로 평균이나 최신값 사용)
-        const monthlyData = data.results[0].data;
-        if (monthlyData.length > 0) {
-          // 최신 월 데이터의 ratio 사용 (상대값)
-          const latestRatio = monthlyData[monthlyData.length - 1].ratio || 0;
-          // 상대값을 문자열로 반환 (실제 검색량은 데이터랩에서 제공하지 않음)
-          return latestRatio > 0 ? `${Math.round(latestRatio)}` : '';
-        }
-      }
-    } else {
-      // 데이터랩 API가 실패하면 빈 문자열 반환 (월 검색량은 선택사항)
-      console.log('데이터랩 API 응답 실패:', response.status);
-    }
-  } catch (error) {
-    console.error('데이터랩 API 호출 오류:', error);
-  }
-  
   return '';
 }
 

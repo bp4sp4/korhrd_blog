@@ -27,9 +27,7 @@ interface Tab {
 
 interface SearchData {
   summary: {
-    monthlySearchVolume?: string;
     monthlyPublicationCount?: string;
-    blockOrder?: string;
     keywordTopic?: string;
     keywordType?: string;
     autocompletion?: string;
@@ -140,16 +138,8 @@ export default function KeywordPage() {
             <h3 className={styles.sectionTitle}>요약 정보</h3>
             <div className={styles.summaryGrid}>
               <div className={styles.summaryItem}>
-                <span className={styles.summaryLabel}>월 검색량</span>
-                <span className={styles.summaryValue}>{searchData.summary.monthlySearchVolume || '-'}</span>
-              </div>
-              <div className={styles.summaryItem}>
                 <span className={styles.summaryLabel}>총 검색 결과 수</span>
                 <span className={styles.summaryValue}>{searchData.summary.monthlyPublicationCount || '-'}</span>
-              </div>
-              <div className={styles.summaryItem}>
-                <span className={styles.summaryLabel}>블록순서</span>
-                <span className={styles.summaryValue}>{searchData.summary.blockOrder || '-'}</span>
               </div>
               <div className={styles.summaryItem}>
                 <span className={styles.summaryLabel}>키워드 주제</span>
