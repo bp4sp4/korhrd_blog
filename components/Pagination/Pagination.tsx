@@ -162,23 +162,6 @@ export default function Pagination({
           </svg>
         </button>
       </div>
-
-      {/* 페이지 크기 선택 */}
-      {showPageSizeSelector && onPageSizeChange && (
-        <div className={styles.pageInfo}>
-          <select
-            className={styles.pageSizeSelect}
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          >
-            {pageSizeOptions.map((size) => (
-              <option key={size} value={size}>
-                {size}개씩
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
     </div>
   );
 }
