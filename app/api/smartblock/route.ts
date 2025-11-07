@@ -8,22 +8,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '키워드가 필요합니다.' }, { status: 400 });
     }
 
-    // 동적 import로 puppeteer 로드 (서버 사이드에서만)
+    // 환경 감지
+    const isVercel = process.env.VERCEL === '1';
+    
+    // 동적 import로 puppeteer 로드 (환경에 따라 다르게)
     let puppeteer;
+    let chromium: any = null;
+    
     try {
-      puppeteer = (await import('puppeteer')).default;
+      if (isVercel) {
+        // Vercel 서버리스 환경: puppeteer-core + @sparticuz/chromium 사용
+        console.log('>>> Vercel 환경 감지: puppeteer-core + @sparticuz/chromium 사용');
+        puppeteer = (await import('puppeteer-core')).default;
+        chromium = await import('@sparticuz/chromium');
+        
+        // Chromium 바이너리 경로 설정
+        if (chromium) {
+          chromium.setGraphicsMode(false); // 헤드리스 모드 최적화
+        }
+      } else {
+        // 로컬 개발 환경 또는 다른 프로덕션 환경: 일반 puppeteer 사용
+        console.log('>>> 로컬/일반 환경 감지: puppeteer 사용');
+        puppeteer = (await import('puppeteer')).default;
+      }
       console.log('>>> Puppeteer 로드 성공');
     } catch (importError: any) {
       console.error('Puppeteer import 오류:', importError);
       return NextResponse.json({ 
         error: 'Puppeteer를 로드할 수 없습니다.',
-        details: importError?.message
+        details: importError?.message,
+        isVercel
       }, { status: 500 });
     }
 
     // 실제로 Puppeteer 실행 시도
     console.log('>>> 스마트블록 크롤링 시작:', keyword);
-    const smartBlockData = await crawlNaverSearchWithPuppeteer(keyword, puppeteer);
+    const smartBlockData = await crawlNaverSearchWithPuppeteer(keyword, puppeteer, chromium, isVercel);
 
     return NextResponse.json({
       keyword,
@@ -54,14 +74,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof import('puppeteer').default) {
+async function crawlNaverSearchWithPuppeteer(
+  keyword: string, 
+  puppeteer: any, 
+  chromium: any,
+  isVercel: boolean
+) {
   let browser;
 
   try {
     // 배포 환경(Vercel 등)에서 Puppeteer 실행 옵션
-    const isProduction = process.env.NODE_ENV === 'production';
-    const isVercel = process.env.VERCEL === '1';
-    
     const launchOptions: any = {
       headless: true,
       args: [
@@ -74,24 +96,49 @@ async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof 
         '--single-process', // 서버리스 환경에서 메모리 절약
         '--disable-gpu',
         '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process'
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-domain-reliability',
+        '--disable-hang-monitor',
+        '--disable-ipc-flooding-protection',
+        '--disable-notifications',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-renderer-backgrounding',
+        '--disable-sync',
+        '--disable-translate',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-pings',
+        '--use-mock-keychain',
+        '--hide-scrollbars',
+        '--ignore-certificate-errors',
+        '--ignore-ssl-errors',
+        '--ignore-certificate-errors-spki-list'
       ]
     };
 
-    // Vercel 환경에서는 더 제한적인 옵션 사용
-    if (isVercel) {
-      console.log('>>> Vercel 환경 감지: 최소 옵션으로 실행 시도');
-      launchOptions.args.push('--disable-extensions');
+    // Vercel/서버리스 환경에서는 @sparticuz/chromium 사용
+    if (isVercel && chromium) {
+      console.log('>>> Vercel 환경: @sparticuz/chromium 사용');
+      launchOptions.executablePath = await chromium.executablePath();
       launchOptions.timeout = 30000; // 30초 타임아웃
     }
 
-    // 프로덕션 환경에서는 추가 옵션
-    if (isProduction && !isVercel) {
-      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-    }
-
-    console.log('>>> Puppeteer 실행 옵션:', JSON.stringify(launchOptions, null, 2));
-    console.log('>>> 환경 정보:', { isProduction, isVercel });
+    console.log('>>> Puppeteer 실행 옵션:', {
+      headless: launchOptions.headless,
+      argsCount: launchOptions.args?.length,
+      executablePath: launchOptions.executablePath ? '설정됨' : '기본값',
+      timeout: launchOptions.timeout
+    });
     
     // Puppeteer를 헤드리스 모드로 실행 (GUI 없이)
     try {
@@ -108,23 +155,28 @@ async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof 
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
     // 네이버 검색 페이지로 이동
+    const pageTimeout = isVercel ? 45000 : 60000; // Vercel에서는 45초로 제한
     await page.goto(`https://search.naver.com/search.naver?query=${encodeURIComponent(keyword)}`, { 
       waitUntil: 'domcontentloaded', // DOM 콘텐츠가 로드될 때까지 기다림
-      timeout: 60000 // 최대 1분까지 기다림
+      timeout: pageTimeout
     });
 
     // --- 페이지 스크롤 로직 시작 ---
     // 페이지를 끝까지 스크롤하여 모든 동적 콘텐츠 (스마트블록 포함)가 로드되도록 합니다.
     let previousHeight;
-    while (true) {
+    let scrollCount = 0;
+    const maxScrolls = isVercel ? 3 : 10; // Vercel에서는 최대 3번만 스크롤 (성능 최적화)
+    
+    while (scrollCount < maxScrolls) {
       previousHeight = await page.evaluate('document.body.scrollHeight');
       await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-      // `page.waitForTimeout` 대신 `setTimeout`을 사용합니다.
-      await new Promise(resolve => setTimeout(resolve, 2000)); // 2초 대기하여 콘텐츠 로딩 기다림
+      // Vercel에서는 더 짧은 대기 시간 사용
+      await new Promise(resolve => setTimeout(resolve, isVercel ? 1500 : 2000));
       let newHeight = await page.evaluate('document.body.scrollHeight');
       if (newHeight === previousHeight) {
         break; // 더 이상 스크롤할 내용이 없으면 중단
       }
+      scrollCount++;
     }
     // --- 페이지 스크롤 로직 종료 ---
 
@@ -137,12 +189,13 @@ async function crawlNaverSearchWithPuppeteer(keyword: string, puppeteer: typeof 
     ];
 
     // 스마트블록이 로드될 때까지 대기
+    const selectorTimeout = isVercel ? 10000 : 15000; // Vercel에서는 더 짧은 타임아웃
     await Promise.any(smartBlockSelectors.map(selector => 
-        page.waitForSelector(selector, { timeout: 15000 })
+        page.waitForSelector(selector, { timeout: selectorTimeout })
     )).catch(() => console.log('>>> 스마트블록을 찾지 못했습니다. 계속 진행합니다.'));
 
-    // 추가 대기 시간 (동적 콘텐츠 로딩)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // 추가 대기 시간 (동적 콘텐츠 로딩) - Vercel에서는 더 짧게
+    await new Promise(resolve => setTimeout(resolve, isVercel ? 1000 : 2000));
 
     const smartBlocks = await page.evaluate(() => {
       const results: any[] = [];
