@@ -47,7 +47,7 @@ export default function AdminTable({ initialData }: AdminTableProps) {
   const [success, setSuccess] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [itemsPerPage, setItemsPerPage] = useState(7);
 
   const filteredData = useMemo(() => {
