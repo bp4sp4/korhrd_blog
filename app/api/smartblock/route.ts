@@ -10,6 +10,7 @@ type PuppeteerCore = typeof import('puppeteer-core');
 type Chromium = typeof import('@sparticuz/chromium');
 
 export async function POST(request: NextRequest) {
+// 
   // 환경 변수는 함수 시작 시 한 번만 읽습니다.
   const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
   const isProduction = process.env.NODE_ENV === 'production';
@@ -123,13 +124,16 @@ async function crawlNaverSearchWithPuppeteer(
       // @sparticuz/chromium에서 권장하는 인자와 실행 경로 사용
       launchOptions.args = chromium.args;
       launchOptions.executablePath = await chromium.executablePath();
-      launchOptions.headless = chromium.headless; // Vercel 환경에 맞는 Headless 설정 (대부분 'new')
+      launchOptions.headless = chromium.headless; 
 
-      // 추가적인 메모리 절약 인자
+      // 추가적인 메모리 절약 인자 (Vercel에서 안정성을 높이기 위해 추가)
       launchOptions.args.push(
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--single-process'
+        '--single-process', 
+        '--no-zygote',
+        '--disable-gpu',
+        '--window-size=1280,720', // 고정 크기로 리소스 사용 최소화
       );
 
       console.log('>>> Chromium executablePath 설정 완료:', launchOptions.executablePath ? 'OK' : 'FAIL');
