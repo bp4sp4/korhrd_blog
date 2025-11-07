@@ -140,7 +140,7 @@ export default function SmartBlockPage() {
           </button>
         </div>
         <p className={styles.description}>
-          검색어를 입력하고 버튼을 클릭하면 네이버 검색 결과에서 스마트블록(함께 많이 찾는) 데이터를 HTML 파싱으로 가져옵니다.
+          검색어를 입력하고 버튼을 클릭하면 네이버 검색 결과에서 스마트블록(함께 많이 찾는) 데이터를 가져옵니다.
         </p>
       </div>
 

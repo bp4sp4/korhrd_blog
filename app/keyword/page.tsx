@@ -186,15 +186,8 @@ export default function KeywordPage() {
                     <th>제목</th>
                     <th>아이디</th>
                     <th>닉네임</th>
-                    <th>지수</th>
-                    <th>신뢰도</th>
                     <th>발행일</th>
-                    <th>글자수</th>
                     <th>핵심키</th>
-                    <th>세부키</th>
-                    <th>이미지수</th>
-                    <th>방문자수</th>
-                    <th>진단</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -212,17 +205,8 @@ export default function KeywordPage() {
                       </td>
                       <td>{result.id}</td>
                       <td>{result.nickname}</td>
-                      <td>
-                        <span className={styles.indexBadge}>{result.index}</span>
-                      </td>
-                      <td>{result.reliability}</td>
                       <td>{result.publicationDate}</td>
-                      <td>{result.charCount}</td>
                       <td>{result.coreKeyword}</td>
-                      <td>{result.subKeyword}</td>
-                      <td>{result.imageCount}</td>
-                      <td>{result.visitorCount}</td>
-                      <td>{result.diagnosis}</td>
                     </tr>
                   ))}
                 </tbody>
