@@ -140,9 +140,7 @@ export default function BlogListPage() {
         <p className={styles.description}>
           블로거 ID를 입력하면 해당 블로거의 글 목록을 가져옵니다.
           <br />
-          <span className={styles.note}>
-            * 블로그지수, C-rank, d.i.a., d.ia+는 네이버 내부 지표로 공개 API로는 제공되지 않습니다.
-          </span>
+       
         </p>
       </div>
 
@@ -191,38 +189,7 @@ export default function BlogListPage() {
             </div>
           </div>
           
-          {/* 블로그 지표 섹션 */}
-          {(blogInfo.blogIndex || blogInfo.cRank || blogInfo.dia || blogInfo.diaPlus) && (
-            <div className={styles.blogMetricsSection}>
-              <h3 className={styles.metricsTitle}>블로그 지표</h3>
-              <div className={styles.metricsGrid}>
-                {blogInfo.blogIndex && (
-                  <div className={styles.metricBox}>
-                    <label className={styles.metricLabel}>블로그지수</label>
-                    <div className={styles.metricValue}>{blogInfo.blogIndex}</div>
-                  </div>
-                )}
-                {blogInfo.cRank && (
-                  <div className={styles.metricBox}>
-                    <label className={styles.metricLabel}>C-RANK</label>
-                    <div className={styles.metricValue}>{blogInfo.cRank}</div>
-                  </div>
-                )}
-                {blogInfo.dia && (
-                  <div className={styles.metricBox}>
-                    <label className={styles.metricLabel}>D.I.A</label>
-                    <div className={styles.metricValue}>{blogInfo.dia}</div>
-                  </div>
-                )}
-                {blogInfo.diaPlus && (
-                  <div className={styles.metricBox}>
-                    <label className={styles.metricLabel}>D.I.A+</label>
-                    <div className={styles.metricValue}>{blogInfo.diaPlus}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+       
         </div>
       )}
 
