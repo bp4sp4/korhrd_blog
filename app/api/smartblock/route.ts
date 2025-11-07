@@ -12,38 +12,84 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '키워드가 필요합니다.' }, { status: 400 });
     }
 
-    // 환경 감지
-    const isVercel = process.env.VERCEL === '1';
+    // 환경 감지 (더 견고하게)
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    console.log('>>> 환경 정보:', { 
+      VERCEL: process.env.VERCEL, 
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      NODE_ENV: process.env.NODE_ENV,
+      isVercel,
+      isProduction
+    });
     
     // 동적 import로 puppeteer 로드 (환경에 따라 다르게)
-    let puppeteer;
+    let puppeteer: any = null;
     let chromium: any = null;
+    let importError: any = null;
     
-    try {
-      if (isVercel) {
-        // Vercel 서버리스 환경: puppeteer-core + @sparticuz/chromium 사용
-        console.log('>>> Vercel 환경 감지: puppeteer-core + @sparticuz/chromium 사용');
+    // Vercel 환경에서는 puppeteer-core + @sparticuz/chromium 시도
+    if (isVercel) {
+      try {
+        console.log('>>> Vercel 환경: puppeteer-core + @sparticuz/chromium 로드 시도');
         puppeteer = (await import('puppeteer-core')).default;
         chromium = await import('@sparticuz/chromium');
         
         // Chromium 바이너리 경로 설정
-        if (chromium) {
+        if (chromium && typeof chromium.setGraphicsMode === 'function') {
           chromium.setGraphicsMode(false); // 헤드리스 모드 최적화
         }
-      } else {
-        // 로컬 개발 환경 또는 다른 프로덕션 환경: 일반 puppeteer 사용
-        console.log('>>> 로컬/일반 환경 감지: puppeteer 사용');
-        puppeteer = (await import('puppeteer')).default;
+        console.log('>>> puppeteer-core + @sparticuz/chromium 로드 성공');
+      } catch (vercelError: any) {
+        console.error('>>> Vercel 환경에서 puppeteer-core 로드 실패:', vercelError);
+        importError = vercelError;
+        
+        // Fallback: 일반 puppeteer 시도
+        try {
+          console.log('>>> Fallback: 일반 puppeteer 로드 시도');
+          puppeteer = (await import('puppeteer')).default;
+          chromium = null;
+          console.log('>>> Fallback puppeteer 로드 성공');
+        } catch (fallbackError: any) {
+          console.error('>>> Fallback puppeteer 로드도 실패:', fallbackError);
+          importError = fallbackError;
+        }
       }
-      console.log('>>> Puppeteer 로드 성공');
-    } catch (importError: any) {
-      console.error('Puppeteer import 오류:', importError);
+    } else {
+      // 로컬 개발 환경: 일반 puppeteer 사용
+      try {
+        console.log('>>> 로컬 환경: puppeteer 로드 시도');
+        puppeteer = (await import('puppeteer')).default;
+        console.log('>>> puppeteer 로드 성공');
+      } catch (localError: any) {
+        console.error('>>> 로컬 환경에서 puppeteer 로드 실패:', localError);
+        importError = localError;
+      }
+    }
+    
+    // 모든 import 시도가 실패한 경우
+    if (!puppeteer) {
+      console.error('>>> 모든 Puppeteer import 시도 실패');
       return NextResponse.json({ 
         error: 'Puppeteer를 로드할 수 없습니다.',
-        details: importError?.message,
-        isVercel
+        details: importError?.message || '알 수 없는 오류',
+        stack: importError?.stack,
+        isVercel,
+        isProduction,
+        env: {
+          VERCEL: process.env.VERCEL,
+          VERCEL_ENV: process.env.VERCEL_ENV,
+          NODE_ENV: process.env.NODE_ENV
+        }
       }, { status: 500 });
     }
+    
+    console.log('>>> Puppeteer 로드 최종 성공:', { 
+      hasPuppeteer: !!puppeteer, 
+      hasChromium: !!chromium,
+      isVercel 
+    });
 
     // 실제로 Puppeteer 실행 시도
     console.log('>>> 스마트블록 크롤링 시작:', keyword);
@@ -132,9 +178,19 @@ async function crawlNaverSearchWithPuppeteer(
 
     // Vercel/서버리스 환경에서는 @sparticuz/chromium 사용
     if (isVercel && chromium) {
-      console.log('>>> Vercel 환경: @sparticuz/chromium 사용');
-      launchOptions.executablePath = await chromium.executablePath();
-      launchOptions.timeout = 30000; // 30초 타임아웃
+      try {
+        console.log('>>> Vercel 환경: @sparticuz/chromium 사용');
+        if (typeof chromium.executablePath === 'function') {
+          launchOptions.executablePath = await chromium.executablePath();
+        } else if (chromium.executablePath) {
+          launchOptions.executablePath = chromium.executablePath;
+        }
+        launchOptions.timeout = 30000; // 30초 타임아웃
+        console.log('>>> Chromium executablePath 설정됨:', launchOptions.executablePath ? '설정됨' : '실패');
+      } catch (chromiumError: any) {
+        console.error('>>> Chromium executablePath 가져오기 실패:', chromiumError);
+        // chromium 없이도 계속 진행 (일반 puppeteer 사용)
+      }
     }
 
     console.log('>>> Puppeteer 실행 옵션:', {
