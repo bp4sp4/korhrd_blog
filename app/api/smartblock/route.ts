@@ -5,8 +5,20 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  let keyword: string | undefined;
+  
   try {
-    const { keyword } = await request.json();
+    // 요청 본문 파싱
+    try {
+      const body = await request.json();
+      keyword = body?.keyword;
+    } catch (parseError: any) {
+      console.error('>>> 요청 본문 파싱 실패:', parseError);
+      return NextResponse.json({ 
+        error: '요청 본문을 파싱할 수 없습니다.',
+        details: parseError?.message
+      }, { status: 400 });
+    }
 
     if (!keyword) {
       return NextResponse.json({ error: '키워드가 필요합니다.' }, { status: 400 });
@@ -102,22 +114,45 @@ export async function POST(request: NextRequest) {
       totalBlocks: smartBlockData.length
     });
   } catch (error: any) {
-    console.error('크롤링 오류:', error);
-    console.error('오류 상세:', {
+    console.error('>>> 크롤링 오류:', error);
+    console.error('>>> 오류 상세:', {
       message: error?.message,
       stack: error?.stack,
       name: error?.name,
-      code: error?.code
+      code: error?.code,
+      keyword: keyword
     });
     
-    // 더 자세한 에러 정보 반환 (개발 환경에서만)
+    // 더 자세한 에러 정보 반환 (디버깅용)
     const errorResponse: any = { 
       error: '서버 오류가 발생했습니다.',
+      message: error?.message || '알 수 없는 오류',
+      type: error?.name || 'Error'
     };
     
+    // 프로덕션에서도 기본적인 에러 정보 제공
+    if (error?.message) {
+      // 민감하지 않은 에러 메시지만 제공
+      if (error.message.includes('Puppeteer') || 
+          error.message.includes('chromium') ||
+          error.message.includes('브라우저')) {
+        errorResponse.details = '브라우저 실행 중 오류가 발생했습니다.';
+      } else if (error.message.includes('timeout') || 
+                 error.message.includes('타임아웃')) {
+        errorResponse.details = '요청 시간이 초과되었습니다.';
+      } else {
+        errorResponse.details = error.message;
+      }
+    }
+    
+    // 개발 환경에서만 스택 트레이스 제공
     if (process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development') {
-      errorResponse.details = error?.message;
       errorResponse.stack = error?.stack;
+      errorResponse.fullError = {
+        name: error?.name,
+        code: error?.code,
+        message: error?.message
+      };
     }
     
     return NextResponse.json(errorResponse, { status: 500 });
@@ -202,10 +237,23 @@ async function crawlNaverSearchWithPuppeteer(
     
     // Puppeteer를 헤드리스 모드로 실행 (GUI 없이)
     try {
-      browser = await puppeteer.launch(launchOptions);
+      console.log('>>> Puppeteer 브라우저 실행 시도...');
+      const launchPromise = puppeteer.launch(launchOptions);
+      
+      // 타임아웃 설정 (30초)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('브라우저 실행 타임아웃 (30초)')), 30000)
+      );
+      
+      browser = await Promise.race([launchPromise, timeoutPromise]) as any;
       console.log('>>> Puppeteer 브라우저 실행 성공');
     } catch (launchError: any) {
       console.error('>>> Puppeteer 브라우저 실행 실패:', launchError);
+      console.error('>>> 실행 옵션:', JSON.stringify({
+        headless: launchOptions.headless,
+        hasExecutablePath: !!launchOptions.executablePath,
+        argsCount: launchOptions.args?.length
+      }));
       throw new Error(`Puppeteer 브라우저 실행 실패: ${launchError?.message || '알 수 없는 오류'}`);
     } 
 
