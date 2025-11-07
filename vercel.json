@@ -1,6 +1,6 @@
 {
   "functions": {
-    "app/api/smartblock/route.ts": {
+    "app/api/smartblock/**": {
       "maxDuration": 60,
       "memory": 3008
     }
