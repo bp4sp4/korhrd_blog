@@ -202,12 +202,11 @@ async function crawlNaverSearchWithPuppeteer(
       timeout: pageTimeout
     });
 
-    // --- 스크롤 로직 (최소화) ---
-    // 무료 플랜: 최소 스크롤만 (빠르게)
     if (isVercel) {
       // 빠른 스크롤 (스마트블록은 보통 상단에 있음)
-      await page.evaluate('window.scrollTo(0, 300)'); // 약간만 스크롤
-      await new Promise(resolve => setTimeout(resolve, 400)); // 짧은 대기
+      await page.evaluate('window.scrollTo(0, 300)');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await page.evaluate('window.scrollTo(0, 900)');
     } else {
       // 로컬: 기존 로직
       let previousHeight;
@@ -228,26 +227,37 @@ async function crawlNaverSearchWithPuppeteer(
     const smartBlockSelectors = [
       'a.jyxwDwu8umzdhCQxX48l',
       '.fds-flicking-augmentation a',
+      '.sds-comps-vertical-layout[data-template-id="ugcItem"]',
+      '.fds-ugc-block-mod',
     ];
 
     // 스마트블록 대기 (무료 플랜: 매우 짧은 대기)
-    const selectorTimeout = isVercel ? 2000 : 15000; // 무료 플랜: 2초만 대기
+    const selectorTimeout = isVercel ? 2500 : 15000; // 무료 플랜: 2.5초만 대기
     try {
-        await Promise.any(smartBlockSelectors.map(selector => 
-            page.waitForSelector(selector, { timeout: selectorTimeout })
-        ));
+      await Promise.any(
+        smartBlockSelectors.map((selector) =>
+          page.waitForSelector(selector, { timeout: selectorTimeout })
+        )
+      );
     } catch (e) {
-        console.log('>>> 스마트블록 대기 시간 초과. 현재 DOM으로 추출 시도.');
+      console.log('>>> 스마트블록 대기 시간 초과. 현재 DOM으로 추출 시도.');
     }
-    // 최소 대기 (무료 플랜: 300ms)
-    await new Promise(resolve => setTimeout(resolve, isVercel ? 300 : 2000));
+    // 최소 대기 (무료 플랜: 600ms)
+    await new Promise((resolve) => setTimeout(resolve, isVercel ? 600 : 2000));
 
     const smartBlocks = await page.evaluate(() => {
       const results: any[] = [];
 
-      // 스마트블록 컨테이너들 찾기 (각 탭) - 최대 3개
-      const collectionRoots = document.querySelectorAll('.fds-collection-root');
-      const maxBlocks = Math.min(3, collectionRoots.length); // 최대 3개 처리
+      // 스마트블록 컨테이너들 찾기 (각 탭)
+      let collectionRoots = Array.from(document.querySelectorAll('.fds-collection-root'));
+
+      if (collectionRoots.length === 0) {
+        collectionRoots = Array.from(
+          document.querySelectorAll('.sds-comps-vertical-layout[data-template-type="vertical"][data-template-id="layout"]')
+        );
+      }
+
+      const maxBlocks = Math.min(4, collectionRoots.length);
 
       for (let index = 0; index < maxBlocks; index++) {
         const collectionRoot = collectionRoots[index] as Element;
@@ -292,26 +302,104 @@ async function crawlNaverSearchWithPuppeteer(
 
         // 블로그 아이템들 찾기
         const blogItems: any[] = [];
-        const blogModules = collectionRoot.querySelectorAll('.fds-ugc-block-mod');
+        const blogModules =
+          collectionRoot.querySelectorAll('.fds-ugc-block-mod').length > 0
+            ? collectionRoot.querySelectorAll('.fds-ugc-block-mod')
+            : collectionRoot.querySelectorAll('.sds-comps-vertical-layout[data-template-id="ugcItem"]');
 
-        blogModules.forEach((module: Element) => {
-          // 블로그 제목 추출
-          const titleElement = module.querySelector('.fds-comps-right-image-text-title .fds-comps-text');
-          const blogTitle = titleElement?.textContent?.trim() || '';
+        blogModules.forEach((module: Element, itemIndex: number) => {
+          const selectText = (...selectors: string[]): string => {
+            for (const selector of selectors) {
+              const el = selector ? module.querySelector(selector) : null;
+              if (el && el.textContent) {
+                const text = el.textContent.trim();
+                if (text) return text;
+              }
+            }
+            return '';
+          };
 
-          // 블로그 내용 추출
-          const contentElement = module.querySelector('.fds-comps-right-image-text-content .fds-comps-text');
-          const blogContent = contentElement?.textContent?.trim() || '';
+          const selectHref = (...selectorList: string[]): string => {
+            for (const selector of selectorList) {
+              if (!selector) continue;
+              const el = module.querySelector(selector) as HTMLAnchorElement | null;
+              if (el?.href) {
+                return el.href;
+              }
+            }
+            return '';
+          };
 
-          // 블로그 링크 추출
-          const titleLink = module.querySelector('.fds-comps-right-image-text-title') as HTMLAnchorElement;
-          const blogLink = titleLink?.href || '';
+          // 블로그 제목 / 내용 / 링크 추출
+          const blogTitle = selectText(
+            '.fds-comps-right-image-text-title .fds-comps-text',
+            '.sds-comps-text-type-headline1',
+            '.sds-comps-text-ellipsis-1',
+            '.sds-comps-text-type-headline3'
+          );
+
+          const blogContent = selectText(
+            '.fds-comps-right-image-text-content .fds-comps-text',
+            '.fds-comps-text-type-body1',
+            '.sds-comps-text-type-body1',
+            '.sds-comps-text-ellipsis-2'
+          );
+
+          const blogLink =
+            selectHref(
+              '.fds-comps-right-image-text-title',
+              '.sds-comps-text-type-headline1 a',
+              '.sds-comps-profile-info-title a',
+              'a[href*="blog.naver.com"]',
+              'a[href*="cafe.naver.com"]'
+            ) || '';
+
+          const profileLink =
+            selectHref(
+              '.fds-thumb-anchor',
+              '.sds-comps-profile-source-thumb a',
+              '.sds-comps-profile-info-title a'
+            ) || '';
+
+          const nickname = selectText(
+            '.fds-info-inner-text .fds-comps-text',
+            '.fds-info-text-group .fds-comps-text',
+            '.fds-comps-author-name',
+            '.sds-comps-profile-info-title .sds-comps-text'
+          );
+
+          const extractBlogId = (href?: string | null) => {
+            if (!href) return '';
+            const directMatch = href.match(/blog\.naver\.com\/([^/?#]+)/);
+            if (directMatch) return directMatch[1].toLowerCase();
+            try {
+              const urlObj = new URL(href);
+              if (urlObj.hostname !== 'blog.naver.com') return '';
+              const segments = urlObj.pathname.split('/').filter(Boolean);
+              if (segments.length > 0) return segments[0].toLowerCase();
+              const queryId = urlObj.searchParams.get('blogId');
+              if (queryId) return queryId.toLowerCase();
+            } catch {
+              // ignore invalid url
+            }
+            return '';
+          };
+
+          const blogIdFromProfile = extractBlogId(profileLink);
+          const blogIdFromLink = extractBlogId(blogLink);
+          const blogId = blogIdFromProfile || blogIdFromLink;
 
           if (blogTitle) {
             blogItems.push({
+              index: itemIndex + 1,
               title: blogTitle,
-              content: blogContent, // 내용 전체 가져오기
+              content: blogContent,
               link: blogLink,
+              profileLink,
+              blogId,
+              authorId: blogId,
+              nickname,
+              author: nickname,
             });
           }
         });

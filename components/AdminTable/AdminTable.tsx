@@ -59,6 +59,19 @@ export default function AdminTable({
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [refreshingRecords, setRefreshingRecords] = useState<Set<string>>(new Set());
+
+  const showTemporarySuccess = (message: string) => {
+    setSuccess(message);
+    setShowSuccessMessage(true);
+    window.setTimeout(() => {
+      setShowSuccessMessage(false);
+      setSuccess('');
+    }, 3000);
+  };
+
+  const normalizeKeywordValue = (value: string) =>
+    value ? value.replace(/\s+/g, ' ').trim().toLowerCase() : '';
 
   const logRecordActivity = async (
     action: 'create' | 'update' | 'delete',
@@ -164,6 +177,87 @@ export default function AdminTable({
       }
       return next;
     });
+  };
+
+  const handleRefreshRanking = async (record: TableData) => {
+    const key = getRecordKey(record);
+    if (refreshingRecords.has(key)) {
+      return;
+    }
+
+    setRefreshingRecords((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+
+    setError('');
+
+    try {
+      const params = new URLSearchParams({
+        keyword: record.keyword,
+        limit: '1000',
+      });
+
+      const response = await fetch(`/api/rankings/fetch?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error('순위 갱신 요청에 실패했습니다.');
+      }
+
+      const result = await response.json();
+
+      const updatedEntry = Array.isArray(result?.updated)
+        ? result.updated.find(
+            (entry: any) =>
+              entry &&
+              entry.id === record.id &&
+              typeof entry.keyword === 'string' &&
+              normalizeKeywordValue(entry.keyword) === normalizeKeywordValue(record.keyword)
+          )
+        : null;
+
+      const updatedRanking =
+        updatedEntry && typeof updatedEntry.ranking === 'number'
+          ? updatedEntry.ranking
+          : null;
+
+      let rankingLabel = '미노출';
+
+      if (typeof updatedRanking === 'number') {
+        setData((prev) =>
+          prev.map((item) =>
+            item.id === record.id &&
+            normalizeKeywordValue(item.keyword) === normalizeKeywordValue(record.keyword)
+              ? {
+                  ...item,
+                  ranking: updatedRanking,
+                }
+              : item
+          )
+        );
+
+        rankingLabel =
+          updatedRanking > 0 && updatedRanking <= 3 ? `${updatedRanking}위` : '미노출';
+        showTemporarySuccess(`${record.keyword} 순위가 ${rankingLabel}로 갱신되었습니다.`);
+      } else {
+        showTemporarySuccess(`${record.keyword}는 스마트블록에서 확인되지 않았습니다 (미노출).`);
+      }
+
+      router.refresh();
+    } catch (refreshError: any) {
+      console.error('Failed to refresh ranking', refreshError);
+      setError(refreshError?.message || '순위 갱신 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
+    } finally {
+      setRefreshingRecords((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
   };
 
   // 전체 선택/해제
@@ -295,12 +389,7 @@ export default function AdminTable({
       // 선택 초기화
       setSelectedRecords(new Set());
       
-      setSuccess(`${deletableRecords.length}개의 기록이 삭제되었습니다.`);
-      setShowSuccessMessage(true);
-      setTimeout(() => {
-        setShowSuccessMessage(false);
-        setSuccess('');
-      }, 3000);
+      showTemporarySuccess(`${deletableRecords.length}개의 기록이 삭제되었습니다.`);
       
       // 서버 데이터와 동기화
       router.refresh();
@@ -495,12 +584,7 @@ export default function AdminTable({
       
       setEditingRecord(null);
       setSelectedRecords(new Set());
-      setSuccess('수정되었습니다.');
-      setShowSuccessMessage(true);
-      setTimeout(() => {
-        setShowSuccessMessage(false);
-        setSuccess('');
-      }, 3000);
+      showTemporarySuccess('수정되었습니다.');
       
       // 서버 데이터와 동기화
       router.refresh();
@@ -681,6 +765,7 @@ export default function AdminTable({
                 <th>분야</th>
                 <th>키워드</th>
                 <th>상위노출 순위</th>
+                <th>순위 새로고침</th>
                 <th>검색량</th>
                 <th>제목</th>
                 <th>링크</th>
@@ -693,6 +778,7 @@ export default function AdminTable({
                 paginatedData.map((item, index) => {
                   const recordKey = getRecordKey(item);
                   const isSelected = selectedRecords.has(recordKey);
+                  const isRefreshing = refreshingRecords.has(recordKey);
                   const canModify = canModifyRecord(item);
                   return (
                     <tr key={`${item.id}-${index}`} className={isSelected ? styles.selectedRow : ''}>
@@ -729,6 +815,15 @@ export default function AdminTable({
                           )}
                         </div>
                       </td>
+                      <td>
+                        <button
+                          className={styles.refreshButton}
+                          onClick={() => handleRefreshRanking(item)}
+                          disabled={!canModify || isSubmitting || isRefreshing}
+                        >
+                          {isRefreshing ? '갱신 중...' : '새로고침'}
+                        </button>
+                      </td>
                       <td>{item.searchVolume.toLocaleString()}</td>
                       <td>{item.title}</td>
                       <td>
@@ -752,7 +847,7 @@ export default function AdminTable({
                 })
               ) : (
                 <tr>
-                  <td colSpan={11} className={styles.emptyState}>
+                  <td colSpan={12} className={styles.emptyState}>
                     <p>검색 결과가 없습니다.</p>
                   </td>
                 </tr>

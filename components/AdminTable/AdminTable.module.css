@@ -54,6 +54,31 @@
   border-right: none;
 }
 
+.refreshButton {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 9999px;
+  background-color: var(--color-green-primary);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.15s;
+  white-space: nowrap;
+}
+
+.refreshButton:hover {
+  background-color: var(--color-green-hover);
+  transform: translateY(-1px);
+}
+
+.refreshButton:disabled {
+  background-color: #d1d5db;
+  color: #6b7280;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .link {
   color: var(--color-green-primary);
   text-decoration: none;
