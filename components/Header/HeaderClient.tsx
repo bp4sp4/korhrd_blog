@@ -24,7 +24,7 @@ export default function HeaderClient({ email, isAdmin }: HeaderClientProps) {
     <header className={styles.header}>
       <div className={styles.leftSection}>
         <div className={styles.title}>
-          블로그 기록
+          
         </div>
       </div>
       <div className={styles.rightSection}>
@@ -37,11 +37,12 @@ export default function HeaderClient({ email, isAdmin }: HeaderClientProps) {
             </span>
           </div>
         )}
-        {isAdmin && (
-          <a href="/admin" className={styles.adminLink}>
-            관리자
+        {email && (
+          <a href="/account/password" className={styles.passwordLink}>
+            비밀번호 변경
           </a>
         )}
+     
      
      
         {email && (

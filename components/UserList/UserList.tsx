@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import Pagination from '../Pagination/Pagination';
 import styles from './UserList.module.css';
 
 interface User {
@@ -29,6 +30,9 @@ export default function UserList({ initialUsers, isSuperAdmin = false }: UserLis
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const handleToggleAdmin = async (userId: string, currentIsAdmin: boolean) => {
     if (!confirm(`정말 ${currentIsAdmin ? '관리자 권한을 제거' : '관리자 권한을 부여'}하시겠습니까?`)) {
@@ -75,9 +79,51 @@ export default function UserList({ initialUsers, isSuperAdmin = false }: UserLis
       if (error) throw error;
 
       setUsers(data || []);
+      setCurrentPage(1);
     } catch (error: any) {
       console.error('Error refreshing users:', error);
     }
+  };
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return users;
+    }
+
+    const lowerTerm = searchTerm.trim().toLowerCase();
+    return users.filter((user) => {
+      const nameMatch = (user.name || '').toLowerCase().includes(lowerTerm);
+      const emailMatch = (user.email || '').toLowerCase().includes(lowerTerm);
+      const teamMatch = (user.teams?.name || '').toLowerCase().includes(lowerTerm);
+      return nameMatch || emailMatch || teamMatch;
+    });
+  }, [users, searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+
+  const currentPageData = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredUsers.slice(startIndex, startIndex + pageSize);
+  }, [filteredUsers, currentPage, pageSize]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+    setCurrentPage(1);
   };
 
   const handleDeleteUser = async (userId: string, userName: string) => {
@@ -115,23 +161,22 @@ export default function UserList({ initialUsers, isSuperAdmin = false }: UserLis
 
   return (
     <div className={styles.userListContainer}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 className={styles.title}>계정 관리</h2>
-        <button
-          onClick={refreshUsers}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#f3f4f6',
-            color: '#374151',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: 'pointer',
-          }}
-        >
-          새로고침
-        </button>
+      <div className={styles.header}>
+        <div>
+          <h2 className={styles.title}>계정 관리</h2>
+          <p className={styles.subtitle}>계정은 기본 10개씩 보여지며 검색어로 필터링할 수 있습니다.</p>
+        </div>
+        <div className={styles.controls}>
+          <input
+            className={styles.searchInput}
+            placeholder="이름, 이메일, 팀으로 검색"
+            value={searchTerm}
+            onChange={handleSearchChange}
+          />
+          <button className={styles.refreshButton} onClick={refreshUsers}>
+            새로고침
+          </button>
+        </div>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
@@ -150,8 +195,8 @@ export default function UserList({ initialUsers, isSuperAdmin = false }: UserLis
             </tr>
           </thead>
           <tbody className={styles.tableBody}>
-            {users.length > 0 ? (
-              users.map((user) => {
+            {currentPageData.length > 0 ? (
+              currentPageData.map((user) => {
                 const getRoleLabel = (role: string | null) => {
                   if (role === 'super_admin') return '최고관리자';
                   if (role === 'admin') return '관리자';
@@ -217,13 +262,24 @@ export default function UserList({ initialUsers, isSuperAdmin = false }: UserLis
             ) : (
               <tr>
                 <td colSpan={isSuperAdmin ? 6 : 5} className={styles.emptyState}>
-                  <p>등록된 계정이 없습니다.</p>
+                  <p>검색 조건에 맞는 계정이 없습니다.</p>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalCount={filteredUsers.length}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        pageSizeOptions={[10, 20, 30, 50]}
+        showPageSizeSelector
+      />
     </div>
   );
 }

@@ -5,10 +5,12 @@ import AddRecordForm from '../AddRecordForm/AddRecordForm';
 import styles from './AddRecordButton.module.css';
 
 interface AddRecordButtonProps {
+  currentUserId?: string | null;
   currentUserName?: string | null;
+  userRole?: string | null;
 }
 
-export default function AddRecordButton({ currentUserName }: AddRecordButtonProps) {
+export default function AddRecordButton({ currentUserId, currentUserName, userRole = 'member' }: AddRecordButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
@@ -24,7 +26,9 @@ export default function AddRecordButton({ currentUserName }: AddRecordButtonProp
       <AddRecordForm
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        currentUserId={currentUserId}
         currentUserName={currentUserName}
+        userRole={userRole}
       />
     </>
   );

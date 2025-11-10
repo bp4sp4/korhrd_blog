@@ -2,7 +2,10 @@
 
 :root {
   --background: #ffffff;
-  
+  --foreground: #171717;
+  --color-green-primary: #059669;
+  --color-green-hover: #047857;
+  --color-green-dark: #065f46;
 }
 
 @theme inline {
@@ -14,7 +17,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    
+    --background: #09090b;
     --foreground: #ededed;
   }
 }

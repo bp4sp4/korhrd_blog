@@ -126,7 +126,7 @@ export default function KeywordPage() {
             onClick={handleSearch}
             disabled={isLoading}
           >
-            {isLoading ? '검색 중...' : '🔍'}
+            {isLoading ? '검색 중...' : '검색'}
           </button>
         </div>
       </div>

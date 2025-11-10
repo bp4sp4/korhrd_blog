@@ -59,19 +59,19 @@
 
 .textarea:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
 .analyzeButton {
   width: auto;
   padding: 12px 24px;
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
   border: none;
   border-radius: 6px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 700;
   cursor: pointer;
   transition: background-color 0.15s;
   display: flex;
@@ -83,7 +83,7 @@
 }
 
 .analyzeButton:hover {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 
 .analyzeButton:disabled {
@@ -139,13 +139,13 @@
 
 .searchInput:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
 .searchButton {
   padding: 10px 20px;
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -157,7 +157,7 @@
 }
 
 .searchButton:hover {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 
 .searchDescription {
@@ -273,7 +273,7 @@
 .topicName {
   font-size: 14px;
   font-weight: 600;
-  color: #059669;
+  color: var(--color-green-primary);
   margin-bottom: 6px;
 }
 
@@ -358,7 +358,7 @@
 
 .inquireButton {
   padding: 8px 16px;
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -369,7 +369,7 @@
 }
 
 .inquireButton:hover {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 
 @media (max-width: 1024px) {

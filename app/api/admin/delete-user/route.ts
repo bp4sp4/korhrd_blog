@@ -13,7 +13,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is super_admin
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')

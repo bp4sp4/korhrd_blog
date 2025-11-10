@@ -38,6 +38,7 @@ async function getUserInfo() {
   } = await supabase.auth.getUser();
 
   let email: string | null = null;
+  let userId: string | null = null;
   let isAdmin = false;
   let userName: string | null = null;
   let userRole: string | null = null;
@@ -45,6 +46,7 @@ async function getUserInfo() {
 
   if (user) {
     email = user.email || null;
+    userId = user.id;
     const { data: profile } = await supabase
       .from('profiles')
       .select('is_admin, name, role, team_id')
@@ -56,7 +58,7 @@ async function getUserInfo() {
     userTeamId = profile?.team_id || null;
   }
 
-  return { email, isAdmin, userName, userRole, userTeamId };
+  return { email, userId, isAdmin, userName, userRole, userTeamId };
 }
 
 export default async function Home() {
@@ -71,18 +73,19 @@ export default async function Home() {
   }
 
   const records = await getRecords();
-  const { email, isAdmin, userName, userRole, userTeamId } = await getUserInfo();
+  const { email, userId, isAdmin, userName, userRole, userTeamId } = await getUserInfo();
 
   return (
     <div>
       <UserInfo email={email} isAdmin={isAdmin} />
-      <AddRecordButton currentUserName={userName} />
+      <AddRecordButton currentUserName={userName} currentUserId={userId} userRole={userRole} />
       <TableClient 
         data={records} 
         isAdmin={isAdmin} 
         currentUserName={userName}
         userRole={userRole || 'member'}
         userTeamId={userTeamId}
+        currentUserId={userId}
       />
     </div>
   );

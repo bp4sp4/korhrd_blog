@@ -134,7 +134,7 @@ export default function BlogListPage() {
             onClick={handleSearch}
             disabled={isLoading}
           >
-            {isLoading ? '검색 중...' : '🔍'}
+            {isLoading ? '검색 중...' : '검색'}
           </button>
         </div>
         <p className={styles.description}>
@@ -245,7 +245,7 @@ export default function BlogListPage() {
                   <td>
                     <div className={styles.diagnosisIcons}>
                       <span className={styles.diagnosisIcon} title="상세보기">📋</span>
-                      <span className={styles.diagnosisIcon} title="분석">🔍</span>
+                      <span className={styles.diagnosisIcon} title="분석">검색</span>
                     </div>
                   </td>
                 </tr>

@@ -1,37 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { TableData } from '@/components/Table/Table';
-import AdminTable from '@/components/AdminTable/AdminTable';
 import CreateUserForm from '@/components/CreateUserForm/CreateUserForm';
 import CreateTeamForm from '@/components/CreateTeamForm/CreateTeamForm';
 import TeamList from '@/components/TeamList/TeamList';
 import UserList from '@/components/UserList/UserList';
-
-async function getRecords(): Promise<TableData[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('blog_records')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching records:', error);
-    return [];
-  }
-
-  return (data || []).map((record) => ({
-    id: record.id,
-    field: record.field,
-    keyword: record.keyword,
-    ranking: record.ranking || 0,
-    searchVolume: record.search_volume || 0,
-    title: record.title,
-    link: record.link,
-    author: record.author || '',
-    specialNote: record.special_note || '',
-    teamId: record.team_id || null,
-  }));
-}
+import styles from './admin.module.css';
 
 async function getUsers() {
   const supabase = await createClient();
@@ -78,21 +51,28 @@ export default async function AdminPage() {
 
   const isSuperAdmin = true;
 
-  const records = await getRecords();
   const users = await getUsers();
-
   return (
-    <div>
-      <CreateTeamForm />
-      <TeamList isSuperAdmin={isSuperAdmin} />
-      <CreateUserForm />
-      <UserList initialUsers={users} isSuperAdmin={isSuperAdmin} />
-      <AdminTable 
-        initialData={records} 
-        userRole={profile.role || 'member'}
-        userTeamId={profile.team_id}
-        userName={profile.name}
-      />
+    <div className={styles.container}>
+      <nav className={styles.tabs} aria-label="관리자 기능 바로가기">
+        <a className={styles.tabLink} href="#team-management">
+          팀 관리
+        </a>
+        <a className={styles.tabLink} href="#user-management">
+          계정 관리
+        </a>
+      </nav>
+
+      <section id="team-management" className={styles.section}>
+        <CreateTeamForm />
+        <TeamList isSuperAdmin={isSuperAdmin} />
+      </section>
+
+      <section id="user-management" className={styles.section}>
+        <CreateUserForm />
+        <UserList initialUsers={users} isSuperAdmin={isSuperAdmin} />
+      </section>
+
     </div>
   );
 }

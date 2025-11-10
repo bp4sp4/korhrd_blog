@@ -96,8 +96,9 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
             border: 'none',
             borderRadius: '6px',
             fontSize: '14px',
-            fontWeight: '500',
+            fontWeight: '700',
             cursor: 'pointer',
+            
           }}
         >
           새로고침

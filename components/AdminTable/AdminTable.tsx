@@ -24,12 +24,19 @@ const FIELDS = [
 
 interface AdminTableProps {
   initialData: TableData[];
+  userId?: string | null;
   userRole?: string;
   userTeamId?: string | null;
   userName?: string | null;
 }
 
-export default function AdminTable({ initialData, userRole = 'member', userTeamId = null, userName = null }: AdminTableProps) {
+export default function AdminTable({
+  initialData,
+  userId,
+  userRole = 'member',
+  userTeamId = null,
+  userName = null,
+}: AdminTableProps) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
   const [filters, setFilters] = useState({
@@ -51,7 +58,30 @@ export default function AdminTable({ initialData, userRole = 'member', userTeamI
   const [currentPage, setCurrentPage] = useState(1);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
-  const [itemsPerPage, setItemsPerPage] = useState(7);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  const logRecordActivity = async (
+    action: 'create' | 'update' | 'delete',
+    record: TableData,
+    metadata: Record<string, any> = {}
+  ) => {
+    try {
+      const supabase = createClient();
+      await supabase.from('record_activity_logs').insert({
+        action,
+        record_id: record.id,
+        keyword: record.keyword,
+        title: record.title,
+        field: record.field,
+        actor_id: userId || null,
+        actor_name: userName || null,
+        actor_role: userRole,
+        metadata,
+      });
+    } catch (logError) {
+      console.error('Failed to log record activity:', logError);
+    }
+  };
 
   const filteredData = useMemo(() => {
     return data.filter((item) => {
@@ -119,7 +149,7 @@ export default function AdminTable({ initialData, userRole = 'member', userTeamI
 
   // 레코드 고유 키 생성
   const getRecordKey = (record: TableData) => {
-    return `${record.id}-${record.keyword}-${record.title}`;
+    return `${record.id}-${record.keyword}`;
   };
 
   // 체크박스 선택/해제
@@ -248,6 +278,12 @@ export default function AdminTable({ initialData, userRole = 'member', userTeamI
           .eq('title', record.title);
 
         if (deleteError) throw deleteError;
+
+        await logRecordActivity('delete', record, {
+          specialNote: record.specialNote || null,
+          searchVolume: record.searchVolume,
+          ranking: record.ranking,
+        });
       }
 
       // 로컬 상태 업데이트
@@ -291,23 +327,156 @@ export default function AdminTable({ initialData, userRole = 'member', userTeamI
 
     try {
       const supabase = createClient();
+      const normalizeRequiredText = (
+        input: string | number | null | undefined,
+        fallback: string
+      ) => {
+        if (input === undefined || input === null) return fallback;
+        const trimmed = String(input).trim();
+        return trimmed.length > 0 ? trimmed : fallback;
+      };
+
+      const normalizeOptionalText = (
+        input: string | null | undefined,
+        fallback: string | null | undefined
+      ) => {
+        if (input === undefined) {
+          return fallback ?? null;
+        }
+        if (input === null) {
+          return null;
+        }
+        const trimmed = input.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      };
+
+      const parseNumberInput = (
+        input: string | number | null | undefined,
+        fallback: number | null | undefined
+      ) => {
+        if (input === undefined || input === null) {
+          return fallback ?? null;
+        }
+        if (typeof input === 'string') {
+          const trimmed = input.trim();
+          if (trimmed === '') {
+            return fallback ?? null;
+          }
+          const parsed = Number(trimmed);
+          return Number.isFinite(parsed) ? parsed : fallback ?? null;
+        }
+        if (typeof input === 'number') {
+          return Number.isFinite(input) ? input : fallback ?? null;
+        }
+        return fallback ?? null;
+      };
+
+      const normalizedValues: {
+        field: string;
+        keyword: string;
+        ranking: number | null;
+        searchVolume: number | null;
+        title: string;
+        link: string | null;
+        author: string | null;
+        specialNote: string | null;
+      } = {
+        field: normalizeRequiredText(editForm.field, editingRecord.field),
+        keyword: normalizeRequiredText(editForm.keyword, editingRecord.keyword),
+        ranking: parseNumberInput(editForm.ranking, editingRecord.ranking),
+        searchVolume: parseNumberInput(editForm.searchVolume, editingRecord.searchVolume),
+        title: normalizeRequiredText(editForm.title, editingRecord.title),
+        link: normalizeOptionalText(editForm.link ?? null, editingRecord.link),
+        author: normalizeOptionalText(editForm.author ?? null, editingRecord.author),
+        specialNote: normalizeOptionalText(editForm.specialNote ?? null, editingRecord.specialNote),
+      };
+
+      const updatePayload = {
+        field: normalizedValues.field,
+        keyword: normalizedValues.keyword,
+        ranking:
+          normalizedValues.ranking === null || normalizedValues.ranking === undefined
+            ? null
+            : normalizedValues.ranking,
+        search_volume:
+          normalizedValues.searchVolume === null || normalizedValues.searchVolume === undefined
+            ? null
+            : normalizedValues.searchVolume,
+        title: normalizedValues.title,
+        link: normalizedValues.link ? String(normalizedValues.link) : null,
+        author: normalizedValues.author ? String(normalizedValues.author) : null,
+        special_note: normalizedValues.specialNote ? String(normalizedValues.specialNote) : null,
+      };
+
       const { error: updateError } = await supabase
         .from('blog_records')
-            .update({
-              field: editForm.field,
-              keyword: editForm.keyword,
-              ranking: editForm.ranking ? parseInt(String(editForm.ranking)) : null,
-              search_volume: editForm.searchVolume ? parseInt(String(editForm.searchVolume)) : null,
-              title: editForm.title,
-              link: editForm.link || null, // 링크는 선택사항
-              author: editForm.author || null,
-              special_note: editForm.specialNote || null,
-            })
+        .update(updatePayload)
         .eq('id', editingRecord.id)
         .eq('keyword', editingRecord.keyword)
         .eq('title', editingRecord.title);
 
       if (updateError) throw updateError;
+
+      const sanitizeForChange = (value: any) => {
+        if (value === undefined || value === null) return null;
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          return trimmed === '' ? null : trimmed;
+        }
+        return value;
+      };
+
+      const toComparable = (key: string, value: any) => {
+        const sanitized = sanitizeForChange(value);
+        if (sanitized === null) return null;
+        if (key === 'ranking' || key === 'searchVolume') {
+          const num = Number(sanitized);
+          return Number.isNaN(num) ? null : num;
+        }
+        if (typeof sanitized === 'string') {
+          return sanitized;
+        }
+        return sanitized;
+      };
+
+      const changes: Record<
+        string,
+        { before: any; after: any }
+      > = {};
+
+      Object.entries(normalizedValues).forEach(([key, value]) => {
+        if (key === 'specialNote') {
+          const before = sanitizeForChange((editingRecord as any).specialNote ?? null);
+          const after = sanitizeForChange(value);
+          if (toComparable(key, before) !== toComparable(key, after)) {
+            changes.specialNote = {
+              before,
+              after,
+            };
+          }
+          return;
+        }
+
+        const beforeValue = sanitizeForChange((editingRecord as any)[key]);
+        const afterValue = sanitizeForChange(value);
+        if (toComparable(key, beforeValue) !== toComparable(key, afterValue)) {
+          (changes as any)[key] = {
+            before: beforeValue ?? null,
+            after: afterValue ?? null,
+          };
+        }
+      });
+
+      const updatedRecordForState: Partial<TableData> = {
+        field: normalizedValues.field,
+        keyword: normalizedValues.keyword,
+        ranking: normalizedValues.ranking ?? editingRecord.ranking ?? 0,
+        searchVolume: normalizedValues.searchVolume ?? editingRecord.searchVolume ?? 0,
+        title: normalizedValues.title,
+        link: normalizedValues.link !== null ? normalizedValues.link : undefined,
+        author: normalizedValues.author !== null ? normalizedValues.author : undefined,
+        specialNote: normalizedValues.specialNote !== null ? normalizedValues.specialNote : undefined,
+      };
 
       // 로컬 상태 업데이트
       setData((prev) =>
@@ -315,10 +484,14 @@ export default function AdminTable({ initialData, userRole = 'member', userTeamI
           item.id === editingRecord.id && 
           item.keyword === editingRecord.keyword && 
           item.title === editingRecord.title
-            ? { ...item, ...editForm }
+            ? { ...item, ...updatedRecordForState }
             : item
         )
       );
+
+      if (Object.keys(changes).length > 0) {
+        await logRecordActivity('update', editingRecord, { changes });
+      }
       
       setEditingRecord(null);
       setSelectedRecords(new Set());

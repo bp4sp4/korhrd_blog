@@ -39,10 +39,10 @@
 }
 
 .searchInput {
-  padding: 10px 16px;
+  padding: 8px 16px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
   min-width: 300px;
@@ -50,7 +50,7 @@
 }
 
 .searchInput:focus {
-  border-color: #10b981;
+  border-color: var(--color-green-primary);
 }
 
 .countSelect {
@@ -66,24 +66,24 @@
 }
 
 .countSelect:focus {
-  border-color: #10b981;
+  border-color: var(--color-green-primary);
 }
 
 .searchButton {
   padding: 10px 20px;
-  background-color: #10b981;
+  background-color: var(--color-green-primary);
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
   transition: background-color 0.2s;
   height: fit-content;
 }
 
 .searchButton:hover:not(:disabled) {
-  background-color: #059669;
+  background-color: var(--color-green-hover);
 }
 
 .searchButton:disabled {

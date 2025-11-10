@@ -111,7 +111,7 @@
 }
 
 .success {
-  color: #059669;
+  color: var(--color-green-primary);
   font-size: 14px;
   margin-bottom: 16px;
   padding: 12px;

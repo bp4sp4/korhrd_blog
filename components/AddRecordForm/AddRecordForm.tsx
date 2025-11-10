@@ -22,21 +22,35 @@ interface AddRecordFormProps {
   onRecordAdded?: () => void;
   isOpen?: boolean;
   onClose?: () => void;
+  currentUserId?: string | null;
   currentUserName?: string | null;
+  userRole?: string | null;
 }
 
-export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, currentUserName }: AddRecordFormProps) {
+const getInitialFormData = (author: string) => ({
+  id: '',
+  field: '사회복지사',
+  keyword: '',
+  ranking: '',
+  searchVolume: '',
+  title: '',
+  link: '',
+  specialNote: '',
+  author,
+});
+
+export default function AddRecordForm({
+  onRecordAdded,
+  isOpen = false,
+  onClose,
+  currentUserId,
+  currentUserName,
+  userRole = 'member',
+}: AddRecordFormProps) {
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    id: '',
-    field: '사회복지사',
-    keyword: '',
-    ranking: '',
-    searchVolume: '',
-    title: '',
-    link: '',
-    specialNote: '',
-  });
+  const canEditAuthor = userRole === 'admin' || userRole === 'super_admin';
+  const defaultAuthor = canEditAuthor ? (currentUserName || '') : (currentUserName || '');
+  const [formData, setFormData] = useState(() => getInitialFormData(defaultAuthor));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -53,7 +67,9 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
     setError('');
     setSuccess('');
 
-    if (!formData.id || !formData.keyword || !formData.title || !currentUserName) {
+    const authorValue = canEditAuthor ? formData.author.trim() : (currentUserName || '').trim();
+
+    if (!formData.id || !formData.keyword || !formData.title || !authorValue) {
       setError('필수 항목을 모두 입력해주세요.');
       return;
     }
@@ -70,23 +86,47 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
         search_volume: formData.searchVolume ? parseInt(formData.searchVolume) : null,
         title: formData.title,
         link: formData.link || null, // 링크는 선택사항
-        author: currentUserName || null,
+        author: authorValue || null,
         special_note: formData.specialNote || null,
       });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        if (insertError.code === '23505') {
+          setError('이미 동일한 기록이 존재합니다. 아이디/키워드/제목을 확인해주세요.');
+          return;
+        }
+        throw insertError;
+      }
+
+      const metadata = {
+        ranking: formData.ranking ? Number(formData.ranking) : null,
+        searchVolume: formData.searchVolume ? Number(formData.searchVolume) : null,
+        link: formData.link || null,
+        specialNote: formData.specialNote || null,
+      };
+
+      const logPayload = {
+        action: 'create',
+        record_id: formData.id,
+        keyword: formData.keyword,
+        title: formData.title,
+        field: formData.field,
+        actor_id: currentUserId || null,
+        actor_name: currentUserName || authorValue || null,
+        actor_role: userRole,
+        metadata,
+      };
+
+      const { error: logError } = await supabase
+        .from('record_activity_logs')
+        .insert(logPayload);
+
+      if (logError) {
+        console.error('Failed to log record activity:', logError);
+      }
 
       setSuccess('기록이 성공적으로 추가되었습니다.');
-      setFormData({
-        id: '',
-        field: '사회복지사',
-        keyword: '',
-        ranking: '',
-        searchVolume: '',
-        title: '',
-        link: '',
-        specialNote: '',
-      });
+      setFormData(getInitialFormData(canEditAuthor ? '' : authorValue));
 
       router.refresh();
       
@@ -110,19 +150,24 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
     }
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (canEditAuthor && !formData.author && currentUserName) {
+      setFormData((prev) => ({ ...prev, author: currentUserName }));
+      return;
+    }
+
+    if (!canEditAuthor && formData.author !== (currentUserName || '')) {
+      setFormData((prev) => ({ ...prev, author: currentUserName || '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentUserName, canEditAuthor]);
+
   if (!isOpen) return null;
 
   const handleClose = () => {
-    setFormData({
-      id: '',
-      field: '사회복지사',
-      keyword: '',
-      ranking: '',
-      searchVolume: '',
-      title: '',
-      link: '',
-      specialNote: '',
-    });
+    setFormData(getInitialFormData(canEditAuthor ? '' : (currentUserName || '')));
     setError('');
     setSuccess('');
     if (onClose) {
@@ -131,8 +176,11 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
   };
 
   return (
-    <div className={styles.modal} onClick={handleClose}>
-      <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+    <div className={styles.modal}>
+      <div
+        className={styles.modalContent}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={styles.modalHeader}>
           <h2 className={styles.formTitle}>새 기록 추가</h2>
           <button className={styles.closeButton} onClick={handleClose}>
@@ -218,6 +266,28 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
             />
           </div>
           <div className={styles.formGroup}>
+            <label className={styles.label}>작성자 *</label>
+            {canEditAuthor ? (
+              <input
+                type="text"
+                name="author"
+                className={styles.input}
+                value={formData.author}
+                onChange={handleChange}
+                placeholder="작성자 이름을 입력하세요"
+                required
+              />
+            ) : (
+              <input
+                type="text"
+                className={styles.input}
+                value={currentUserName || ''}
+                readOnly
+                disabled
+              />
+            )}
+          </div>
+          <div className={styles.formGroup}>
             <label className={styles.label}>링크</label>
             <input
               type="url"
@@ -247,16 +317,7 @@ export default function AddRecordForm({ onRecordAdded, isOpen = false, onClose, 
             type="button"
             className={`${styles.button} ${styles.secondary}`}
               onClick={() => {
-              setFormData({
-                id: '',
-                field: '사회복지사',
-                keyword: '',
-                ranking: '',
-                searchVolume: '',
-                title: '',
-                link: '',
-                specialNote: '',
-              });
+              setFormData(getInitialFormData(canEditAuthor ? '' : (currentUserName || '')));
               setError('');
               setSuccess('');
             }}

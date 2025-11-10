@@ -85,14 +85,14 @@
 
 .input:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
 .button {
   width: 100%;
   padding: 12px;
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -103,7 +103,7 @@
 }
 
 .button:hover:not(:disabled) {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 
 .button:disabled {

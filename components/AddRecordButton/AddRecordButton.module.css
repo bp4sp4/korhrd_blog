@@ -6,17 +6,17 @@
 
 .addButton {
   padding: 12px 24px;
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
   border: none;
   border-radius: 6px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 700;
   cursor: pointer;
   transition: background-color 0.15s;
 }
 
 .addButton:hover {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 

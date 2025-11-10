@@ -55,7 +55,7 @@
 }
 
 .link {
-  color: #059669;
+  color: var(--color-green-primary);
   text-decoration: none;
   word-break: break-all;
 }
@@ -107,7 +107,7 @@
 }
 
 .filterBadge {
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
   font-size: 11px;
   font-weight: 500;
@@ -172,7 +172,7 @@
 
 .filterInput:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
@@ -198,7 +198,7 @@
 
 .filterSelect:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
   color: #1f2937;
 }
@@ -220,12 +220,12 @@
 }
 
 .filterButton.primary {
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
 }
 
 .filterButton.primary:hover {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 
 .filterButton.secondary {
@@ -270,7 +270,7 @@
 
 .paginationButton:hover:not(:disabled) {
   background-color: #f9fafb;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
 }
 
 .paginationButton:disabled {
@@ -279,9 +279,9 @@
 }
 
 .paginationButton.active {
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
 }
 
 .paginationInfo {
@@ -297,13 +297,13 @@
 }
 
 .actionButton {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all .15s;
 }
 
 .editButton {
@@ -334,7 +334,7 @@
 
 .successMessage {
   background-color: #d1fae5;
-  color: #059669;
+  color: var(--color-green-primary);
   border: 1px solid #a7f3d0;
 }
 
@@ -437,7 +437,7 @@
 
 .input:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
@@ -455,7 +455,7 @@
 
 .select:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
@@ -476,12 +476,12 @@
 }
 
 .button.primary {
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
 }
 
 .button.primary:hover {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 
 .button.secondary {
@@ -505,7 +505,7 @@
 }
 
 .success {
-  color: #059669;
+  color: var(--color-green-primary);
   font-size: 14px;
   margin-bottom: 16px;
 }

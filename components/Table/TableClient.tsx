@@ -38,12 +38,20 @@ const FIELDS = [
 interface TableClientProps {
   data: TableData[];
   isAdmin?: boolean;
+  currentUserId?: string | null;
   currentUserName?: string | null;
   userRole?: string;
   userTeamId?: string | null;
 }
 
-export default function TableClient({ data, isAdmin = false, currentUserName, userRole = 'member', userTeamId = null }: TableClientProps) {
+export default function TableClient({
+  data,
+  isAdmin = false,
+  currentUserId,
+  currentUserName,
+  userRole = 'member',
+  userTeamId = null,
+}: TableClientProps) {
   const router = useRouter();
 
   const [filters, setFilters] = useState({
@@ -65,7 +73,30 @@ export default function TableClient({ data, isAdmin = false, currentUserName, us
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
-  const [itemsPerPage, setItemsPerPage] = useState(7);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  const logRecordActivity = async (
+    action: 'create' | 'update' | 'delete',
+    record: TableData,
+    metadata: Record<string, any> = {}
+  ) => {
+    try {
+      const supabase = createClient();
+      await supabase.from('record_activity_logs').insert({
+        action,
+        record_id: record.id,
+        keyword: record.keyword,
+        title: record.title,
+        field: record.field,
+        actor_id: currentUserId || null,
+        actor_name: currentUserName || null,
+        actor_role: userRole,
+        metadata,
+      });
+    } catch (logError) {
+      console.error('Failed to log record activity:', logError);
+    }
+  };
 
   const filteredData = useMemo(() => {
     return data.filter((item) => {
@@ -221,6 +252,12 @@ export default function TableClient({ data, isAdmin = false, currentUserName, us
 
       if (deleteError) throw deleteError;
 
+      void logRecordActivity('delete', record, {
+        specialNote: record.specialNote || null,
+        searchVolume: record.searchVolume,
+        ranking: record.ranking,
+      });
+
       // 삭제 후 체크 해제
       const recordKey = `${record.id}-${record.keyword}-${record.title}`;
       setSelectedRecords((prev) => {
@@ -258,23 +295,146 @@ export default function TableClient({ data, isAdmin = false, currentUserName, us
 
     try {
       const supabase = createClient();
+      const normalizeRequiredText = (
+        input: string | number | null | undefined,
+        fallback: string
+      ) => {
+        if (input === undefined || input === null) return fallback;
+        const trimmed = String(input).trim();
+        return trimmed.length > 0 ? trimmed : fallback;
+      };
+
+      const normalizeOptionalText = (
+        input: string | null | undefined,
+        fallback: string | null | undefined
+      ) => {
+        if (input === undefined) {
+          return fallback ?? null;
+        }
+        if (input === null) {
+          return null;
+        }
+        const trimmed = input.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      };
+
+      const parseNumberInput = (
+        input: string | number | null | undefined,
+        fallback: number | null | undefined
+      ) => {
+        if (input === undefined || input === null) {
+          return fallback ?? null;
+        }
+        if (typeof input === 'string') {
+          const trimmed = input.trim();
+          if (trimmed === '') {
+            return fallback ?? null;
+          }
+          const parsed = Number(trimmed);
+          return Number.isFinite(parsed) ? parsed : fallback ?? null;
+        }
+        if (typeof input === 'number') {
+          return Number.isFinite(input) ? input : fallback ?? null;
+        }
+        return fallback ?? null;
+      };
+
+      const normalizedValues: {
+        field: string;
+        keyword: string;
+        ranking: number | null;
+        searchVolume: number | null;
+        title: string;
+        link: string | null;
+        author: string | null;
+        specialNote: string | null;
+      } = {
+        field: normalizeRequiredText(editForm.field, editingRecord.field),
+        keyword: normalizeRequiredText(editForm.keyword, editingRecord.keyword),
+        ranking: parseNumberInput(editForm.ranking, editingRecord.ranking),
+        searchVolume: parseNumberInput(editForm.searchVolume, editingRecord.searchVolume),
+        title: normalizeRequiredText(editForm.title, editingRecord.title),
+        link: normalizeOptionalText(editForm.link ?? null, editingRecord.link),
+        author: normalizeOptionalText(editForm.author ?? null, editingRecord.author),
+        specialNote: normalizeOptionalText(editForm.specialNote ?? null, editingRecord.specialNote),
+      };
+
+      const updatePayload = {
+        field: normalizedValues.field,
+        keyword: normalizedValues.keyword,
+        ranking:
+          normalizedValues.ranking === null || normalizedValues.ranking === undefined
+            ? null
+            : normalizedValues.ranking,
+        search_volume:
+          normalizedValues.searchVolume === null || normalizedValues.searchVolume === undefined
+            ? null
+            : normalizedValues.searchVolume,
+        title: normalizedValues.title,
+        link: normalizedValues.link ? String(normalizedValues.link) : null,
+        author: normalizedValues.author ? String(normalizedValues.author) : null,
+        special_note: normalizedValues.specialNote ? String(normalizedValues.specialNote) : null,
+      };
+
       const { error: updateError } = await supabase
         .from('blog_records')
-            .update({
-              field: editForm.field,
-              keyword: editForm.keyword,
-              ranking: editForm.ranking ? parseInt(String(editForm.ranking)) : null,
-              search_volume: editForm.searchVolume ? parseInt(String(editForm.searchVolume)) : null,
-              title: editForm.title,
-              link: editForm.link,
-              author: editForm.author || null,
-              special_note: editForm.specialNote || null,
-            })
+        .update(updatePayload)
         .eq('id', editingRecord.id)
         .eq('keyword', editingRecord.keyword)
         .eq('title', editingRecord.title);
 
       if (updateError) throw updateError;
+
+      const sanitizeForChange = (value: any) => {
+        if (value === undefined || value === null) return null;
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          return trimmed === '' ? null : trimmed;
+        }
+        return value;
+      };
+
+      const toComparable = (key: string, value: any) => {
+        const sanitized = sanitizeForChange(value);
+        if (sanitized === null) return null;
+        if (key === 'ranking' || key === 'searchVolume') {
+          const num = Number(sanitized);
+          return Number.isNaN(num) ? null : num;
+        }
+        if (typeof sanitized === 'string') {
+          return sanitized;
+        }
+        return sanitized;
+      };
+
+      const changes: Record<string, { before: any; after: any }> = {};
+
+      Object.entries(normalizedValues).forEach(([key, value]) => {
+        if (key === 'specialNote') {
+          const before = sanitizeForChange((editingRecord as any).specialNote ?? null);
+          const after = sanitizeForChange(value);
+          if (toComparable(key, before) !== toComparable(key, after)) {
+            changes.specialNote = {
+              before,
+              after,
+            };
+          }
+          return;
+        }
+
+        const beforeValue = sanitizeForChange((editingRecord as any)[key]);
+        const afterValue = sanitizeForChange(value);
+        if (toComparable(key, beforeValue) !== toComparable(key, afterValue)) {
+          (changes as any)[key] = {
+            before: beforeValue ?? null,
+            after: afterValue ?? null,
+          };
+        }
+      });
+
+      if (editingRecord && Object.keys(changes).length > 0) {
+        void logRecordActivity('update', editingRecord, { changes });
+      }
 
       setEditingRecord(null);
       setSuccess('수정되었습니다.');
@@ -455,20 +615,23 @@ export default function TableClient({ data, isAdmin = false, currentUserName, us
 
                       try {
                         const supabase = createClient();
-                        const deletePromises = editableItems.map(item =>
-                          supabase
+                        for (const item of editableItems) {
+                          const { error: deleteError } = await supabase
                             .from('blog_records')
                             .delete()
                             .eq('id', item.id)
                             .eq('keyword', item.keyword)
-                            .eq('title', item.title)
-                        );
+                            .eq('title', item.title);
 
-                        const results = await Promise.all(deletePromises);
-                        const errors = results.filter(r => r.error);
-                        
-                        if (errors.length > 0) {
-                          throw errors[0].error;
+                          if (deleteError) {
+                            throw deleteError;
+                          }
+
+                          void logRecordActivity('delete', item, {
+                            specialNote: item.specialNote || null,
+                            searchVolume: item.searchVolume,
+                            ranking: item.ranking,
+                          });
                         }
 
                         // 선택 상태 초기화
@@ -612,7 +775,7 @@ export default function TableClient({ data, isAdmin = false, currentUserName, us
             setItemsPerPage(size);
             setCurrentPage(1);
           }}
-          pageSizeOptions={[7, 10, 20, 50, 100]}
+          pageSizeOptions={[10, 20, 50, 100]}
           showPageSizeSelector={true}
         />
       </div>

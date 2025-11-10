@@ -84,7 +84,7 @@ export default function CreateUserForm() {
         throw new Error(result.error || '사용자 생성 중 오류가 발생했습니다.');
       }
 
-      setSuccess('사용자가 성공적으로 생성되었습니다.');
+      setSuccess(result.message || '사용자가 성공적으로 생성되었습니다.');
       setFormData({
         email: '',
         password: '',

@@ -35,6 +35,57 @@ export async function POST(request: NextRequest) {
 
     // Create user using admin client with service role key
     const adminClient = createAdminClient();
+
+    // 먼저 동일 이메일 사용자 존재 여부 확인
+    const { data: existingUserData, error: existingUserError } = await adminClient.auth.admin.getUserByEmail(email);
+
+    if (existingUserError) {
+      return NextResponse.json({ error: existingUserError.message }, { status: 400 });
+    }
+
+    const userRole = role || 'member';
+    const isAdmin = userRole === 'super_admin' || userRole === 'admin';
+    const normalizedTeamId = teamId || null;
+
+    if (existingUserData?.user) {
+      const targetUserId = existingUserData.user.id;
+
+      const { error: updateError } = await adminClient.auth.admin.updateUserById(targetUserId, {
+        password,
+        email_confirm: true,
+      });
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 400 });
+      }
+
+      const { error: profileError } = await adminClient
+        .from('profiles')
+        .upsert(
+          {
+            id: targetUserId,
+            email,
+            name,
+            is_admin: isAdmin,
+            role: userRole,
+            team_id: normalizedTeamId,
+          },
+          {
+            onConflict: 'id',
+          }
+        );
+
+      if (profileError) {
+        return NextResponse.json({ error: profileError.message }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        user: existingUserData.user,
+        message: '기존 계정 정보를 업데이트했습니다.',
+      });
+    }
+
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email,
       password,
@@ -46,12 +97,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (authData.user) {
-      // 트리거가 자동으로 프로필을 생성하므로, 약간의 지연 후 is_admin 업데이트
-      // 또는 UPSERT를 사용하여 프로필이 없으면 생성, 있으면 업데이트
-      // Determine role and is_admin
-      const userRole = role || 'member';
-      const isAdmin = userRole === 'super_admin' || userRole === 'admin';
-
       const { error: profileError } = await adminClient
         .from('profiles')
         .upsert(
@@ -61,7 +106,7 @@ export async function POST(request: NextRequest) {
             name,
             is_admin: isAdmin,
             role: userRole,
-            team_id: teamId || null,
+            team_id: normalizedTeamId,
           },
           {
             onConflict: 'id',

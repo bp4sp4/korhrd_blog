@@ -44,23 +44,23 @@
 }
 
 .searchInput:focus {
-  border-color: #10b981;
+  border-color: var(--color-green-primary);
 }
 
 .searchButton {
   padding: 12px 24px;
-  background-color: #10b981;
+  background-color: var(--color-green-primary);  ;
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 700;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 .searchButton:hover:not(:disabled) {
-  background-color: #059669;
+  background-color: var(--color-green-hover);
 }
 
 .searchButton:disabled {

@@ -33,7 +33,7 @@
 
 .input:focus {
   outline: none;
-  border-color: #059669;
+  border-color: var(--color-green-primary);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
@@ -48,7 +48,7 @@
 
 .searchButton {
   padding: 12px 24px;
-  background-color: #059669;
+  background-color: var(--color-green-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -62,10 +62,10 @@
 }
 
 .searchButton:hover {
-  background-color: #047857;
+  background-color: var(--color-green-hover);
 }
 
 .searchButton:active {
-  background-color: #065f46;
+  background-color: var(--color-green-dark);
 }
 
