@@ -37,18 +37,29 @@ export async function POST(request: NextRequest) {
     const adminClient = createAdminClient();
 
     // 먼저 동일 이메일 사용자 존재 여부 확인
-    const { data: existingUserData, error: existingUserError } = await adminClient.auth.admin.getUserByEmail(email);
+    const normalizedEmail = String(email).toLowerCase();
+    const {
+      data: usersList,
+      error: listUsersError,
+    } = await adminClient.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
 
-    if (existingUserError) {
-      return NextResponse.json({ error: existingUserError.message }, { status: 400 });
+    if (listUsersError) {
+      return NextResponse.json({ error: listUsersError.message }, { status: 400 });
     }
+
+    const existingUser = usersList?.users?.find(
+      (candidate) => candidate.email?.toLowerCase() === normalizedEmail
+    );
 
     const userRole = role || 'member';
     const isAdmin = userRole === 'super_admin' || userRole === 'admin';
     const normalizedTeamId = teamId || null;
 
-    if (existingUserData?.user) {
-      const targetUserId = existingUserData.user.id;
+    if (existingUser) {
+      const targetUserId = existingUser.id;
 
       const { error: updateError } = await adminClient.auth.admin.updateUserById(targetUserId, {
         password,
@@ -81,7 +92,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        user: existingUserData.user,
+        user: existingUser,
         message: '기존 계정 정보를 업데이트했습니다.',
       });
     }
