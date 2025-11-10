@@ -5,7 +5,7 @@ import puppeteerCore from 'puppeteer-core';
 export const runtime = 'nodejs';
 export const maxDuration = 10;
 
-let localPuppeteerPromise: Promise<typeof import('puppeteer')> | null = null;
+let localPuppeteerPromise: Promise<typeof puppeteerCore> | null = null;
 
 async function getPuppeteer(isVercel: boolean) {
   if (isVercel) {
@@ -13,7 +13,9 @@ async function getPuppeteer(isVercel: boolean) {
   }
 
   if (!localPuppeteerPromise) {
-    localPuppeteerPromise = import('puppeteer').then((mod) => mod.default);
+    localPuppeteerPromise = import('puppeteer').then(
+      (mod) => mod.default as unknown as typeof puppeteerCore
+    );
   }
 
   return localPuppeteerPromise;
@@ -63,7 +65,7 @@ async function scrapeSmartBlocks(
       ? {
           args: chromium.args,
           executablePath: await chromium.executablePath(),
-          headless: chromium.headless ?? true,
+          headless: true,
           defaultViewport: { width: 1280, height: 720 },
         }
       : {
@@ -73,27 +75,28 @@ async function scrapeSmartBlocks(
 
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
+    const pageAny = page as any;
 
-    await page.setUserAgent(
+    await pageAny.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
 
-    await page.goto(url, {
+    await pageAny.goto(url, {
       waitUntil: 'domcontentloaded',
       timeout: isVercel ? 8000 : 60000,
     });
 
     if (isVercel) {
-      await page.evaluate('window.scrollTo(0, 300)');
+      await pageAny.evaluate('window.scrollTo(0, 300)');
       await new Promise((resolve) => setTimeout(resolve, 400));
-      await page.evaluate('window.scrollTo(0, 900)');
+      await pageAny.evaluate('window.scrollTo(0, 900)');
     } else {
       let prevHeight = 0;
       for (let i = 0; i < 8; i += 1) {
-        prevHeight = await page.evaluate('document.body.scrollHeight');
-        await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+        prevHeight = await pageAny.evaluate('document.body.scrollHeight');
+        await pageAny.evaluate('window.scrollTo(0, document.body.scrollHeight)');
         await new Promise((resolve) => setTimeout(resolve, 1200));
-        const newHeight = await page.evaluate('document.body.scrollHeight');
+        const newHeight = await pageAny.evaluate('document.body.scrollHeight');
         if (newHeight === prevHeight) break;
       }
     }
@@ -107,7 +110,7 @@ async function scrapeSmartBlocks(
     try {
       await Promise.any(
         selectors.map((selector) =>
-          page.waitForSelector(selector, { timeout: isVercel ? 2500 : 15000 })
+          pageAny.waitForSelector(selector, { timeout: isVercel ? 2500 : 15000 })
         )
       );
     } catch {
@@ -115,7 +118,7 @@ async function scrapeSmartBlocks(
     }
     await new Promise((resolve) => setTimeout(resolve, isVercel ? 500 : 2000));
 
-    const smartBlocks = await page.evaluate(() => {
+    const smartBlocks = await pageAny.evaluate(() => {
       const extractBlogId = (value?: string | null) => {
         if (!value) return '';
         const directMatch = value.match(/blog\.naver\.com\/([^/?#]+)/);
