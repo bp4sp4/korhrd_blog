@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { ChevronDown, ChevronUp, Filter, RefreshCw } from 'lucide-react';
 import { TableData } from '../Table/Table';
 import Pagination from '../Pagination/Pagination';
 import styles from './AdminTable.module.css';
@@ -60,6 +60,7 @@ export default function AdminTable({
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [refreshingRecords, setRefreshingRecords] = useState<Set<string>>(new Set());
+  const [isBulkRefreshing, setIsBulkRefreshing] = useState(false);
 
   const showTemporarySuccess = (message: string) => {
     setSuccess(message);
@@ -256,6 +257,93 @@ export default function AdminTable({
         next.delete(key);
         return next;
       });
+    }
+  };
+
+  const handleRefreshVisibleRankings = async () => {
+    if (isBulkRefreshing) return;
+
+    const ids = Array.from(
+      new Set(
+        paginatedData
+          .map((item) => item.id?.trim().toLowerCase())
+          .filter((value): value is string => !!value)
+      )
+    );
+
+    if (ids.length === 0) {
+      setError('현재 페이지에 순위를 갱신할 아이디가 없습니다.');
+      setShowSuccessMessage(false);
+      return;
+    }
+
+    const confirmMessage =
+      ids.length === 1
+        ? `"${ids[0]}" 아이디의 순위를 갱신할까요?`
+        : `현재 페이지의 ${ids.length}개 아이디 순위를 모두 갱신할까요?`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsBulkRefreshing(true);
+    setError('');
+    setShowSuccessMessage(false);
+
+    try {
+      const params = new URLSearchParams();
+      params.set('ids', ids.join(','));
+      params.set('limit', String(Math.min(200, paginatedData.length)));
+
+      const response = await fetch(`/api/rankings/fetch?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || '순위 갱신 요청에 실패했습니다.');
+      }
+
+      const updates = Array.isArray(result?.updated) ? result.updated : [];
+      const updateMap = new Map<string, any>();
+
+      updates.forEach((entry: any) => {
+        if (!entry || !entry.id || !entry.keyword) return;
+        const key = `${entry.id.toLowerCase()}__${normalizeKeywordValue(entry.keyword)}`;
+        updateMap.set(key, entry);
+      });
+
+      let successCount = 0;
+
+      setData((prev) =>
+        prev.map((item) => {
+          const key = `${item.id.toLowerCase()}__${normalizeKeywordValue(item.keyword)}`;
+          const update = updateMap.get(key);
+          if (update && typeof update.ranking === 'number') {
+            successCount += 1;
+            return {
+              ...item,
+              ranking: update.ranking,
+            };
+          }
+          return item;
+        })
+      );
+
+      if (successCount > 0) {
+        showTemporarySuccess(`현재 페이지에서 ${successCount}개 항목의 순위를 갱신했습니다.`);
+      } else {
+        showTemporarySuccess('현재 페이지에 순위를 갱신할 항목이 없습니다 (미노출).');
+      }
+
+      router.refresh();
+    } catch (bulkError: any) {
+      console.error('Failed to refresh visible rankings', bulkError);
+      setError(bulkError?.message || '순위 일괄 갱신 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
+    } finally {
+      setIsBulkRefreshing(false);
     }
   };
 
@@ -616,6 +704,21 @@ export default function AdminTable({
             <span className={styles.paginationInfo}>
               총 {filteredData.length}개 결과
             </span>
+            <div className={styles.globalRefreshWrapper} onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className={styles.globalRefreshIconButton}
+                onClick={handleRefreshVisibleRankings}
+                disabled={isBulkRefreshing}
+                aria-label="현재 페이지 순위 일괄 갱신"
+                title={isBulkRefreshing ? '순위 갱신 중...' : '현재 페이지 순위를 한 번에 갱신'}
+              >
+                <RefreshCw
+                  size={18}
+                  className={isBulkRefreshing ? styles.iconSpinning : undefined}
+                />
+              </button>
+            </div>
             {isFilterOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </div>
         </div>

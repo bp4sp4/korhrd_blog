@@ -79,6 +79,49 @@
   transform: none;
 }
 
+.globalRefreshWrapper {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.globalRefreshIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background-color: transparent;
+  color: var(--color-green-primary);
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.15s, color 0.15s;
+}
+
+.globalRefreshIconButton:hover:not(:disabled) {
+  background-color: rgba(5, 150, 105, 0.1);
+  transform: translateY(-1px);
+}
+
+.globalRefreshIconButton:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.iconSpinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .link {
   color: var(--color-green-primary);
   text-decoration: none;
