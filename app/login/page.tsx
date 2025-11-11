@@ -20,48 +20,70 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
+      let listenerCleanedUp = false;
+      const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          if (!listenerCleanedUp) {
+            listener.subscription.unsubscribe();
+            listenerCleanedUp = true;
+          }
+          window.location.replace('/');
+        }
+      });
+
+      const cleanupListener = () => {
+        if (!listenerCleanedUp) {
+          listener.subscription.unsubscribe();
+          listenerCleanedUp = true;
+        }
+      };
+
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (signInError) throw signInError;
-
-      const ensureSession = async () => {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          throw sessionError;
-        }
-
-        if (session) {
-          return session;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 200));
-
-        const {
-          data: { session: retrySession },
-          error: retryError,
-        } = await supabase.auth.getSession();
-
-        if (retryError) {
-          throw retryError;
-        }
-
-        return retrySession;
-      };
-
-      const session = await ensureSession();
-
-      if (!session) {
-        throw new Error('세션을 설정하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      if (signInError) {
+        cleanupListener();
+        throw signInError;
       }
 
-      router.replace('/');
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        cleanupListener();
+        throw sessionError;
+      }
+
+      if (session) {
+        cleanupListener();
+        window.location.replace('/');
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const {
+        data: { session: retrySession },
+        error: retryError,
+      } = await supabase.auth.getSession();
+
+      if (retryError) {
+        cleanupListener();
+        throw retryError;
+      }
+
+      if (retrySession) {
+        cleanupListener();
+        window.location.replace('/');
+        return;
+      }
+
+      cleanupListener();
+      throw new Error('세션을 설정하지 못했습니다. 잠시 후 다시 시도해주세요.');
     } catch (err: any) {
       setError(err.message || '로그인에 실패했습니다.');
     } finally {
