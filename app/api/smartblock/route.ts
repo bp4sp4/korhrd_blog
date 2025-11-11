@@ -22,11 +22,17 @@ function resolveBrowserlessEndpoint() {
     return process.env.BROWSERLESS_WS_ENDPOINT;
   }
 
-  if (process.env.BROWSERLESS_TOKEN) {
-    return `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}`;
+  const token = process.env.BROWSERLESS_TOKEN;
+  if (!token) {
+    return null;
   }
 
-  return null;
+  const region =
+    process.env.BROWSERLESS_REGION ||
+    process.env.BROWSERLESS_DEPLOYMENT ||
+    'production-sfo';
+
+  return `wss://${region}.browserless.io?token=${token}`;
 }
 
 export async function POST(request: NextRequest) {
