@@ -22,7 +22,10 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
         className={styles.logo}
         onClick={() => handleNavClick('/')}
       >
-        <span className={styles.img}><img src="/logo.png" alt="logo" /></span>
+        <span className={styles.logoSpan}>
+          <img src="/logo_main.png" alt="logo" className={styles.logoImage} />
+          한평생 블매일
+        </span>
       </div>
 
       <nav className={styles.nav}>
