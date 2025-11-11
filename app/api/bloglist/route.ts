@@ -1,7 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
+import lambdaChromium from '@sparticuz/chromium';
+import {
+  chromium as playwrightChromium,
+  type Browser,
+  type BrowserContext,
+} from 'playwright-core';
 
 // 네이버 검색 API 엔드포인트
 const NAVER_API_BASE = 'https://openapi.naver.com/v1/search';
+
+export const runtime = 'nodejs';
+export const maxDuration = 20;
+
+let localChromiumPromise: Promise<typeof playwrightChromium> | null = null;
+
+async function getLocalChromium() {
+  if (!localChromiumPromise) {
+    localChromiumPromise = import('playwright').then((mod) => mod.chromium);
+  }
+
+  return localChromiumPromise;
+}
+
+function resolveBrowserlessEndpoint() {
+  const explicitPlaywrightEndpoint = process.env.BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT;
+  if (explicitPlaywrightEndpoint) {
+    return explicitPlaywrightEndpoint;
+  }
+
+  const genericEndpoint = process.env.BROWSERLESS_WS_ENDPOINT;
+  if (genericEndpoint) {
+    if (genericEndpoint.includes('/playwright')) {
+      return genericEndpoint;
+    }
+    try {
+      const url = new URL(genericEndpoint);
+      if (!url.pathname.includes('/playwright')) {
+        url.pathname = url.pathname.replace(/\/?$/, '/playwright');
+      }
+      return url.toString();
+    } catch {
+      return `${genericEndpoint}${genericEndpoint.includes('?') ? '&' : '?'}launch=playwright`;
+    }
+  }
+
+  const token = process.env.BROWSERLESS_TOKEN;
+  if (!token) {
+    return null;
+  }
+
+  const region =
+    process.env.BROWSERLESS_REGION ||
+    process.env.BROWSERLESS_DEPLOYMENT ||
+    'production-sfo';
+
+  return `wss://${region}.browserless.io/playwright?token=${token}`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,9 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '블로거 ID가 필요합니다.' }, { status: 400 });
     }
 
-    // 블로그 상세 정보 가져오기 (Puppeteer 사용)
-    const puppeteer = (await import('puppeteer')).default;
-    const blogInfo = await fetchBlogInfo(blogId, puppeteer);
+    const blogInfo = await fetchBlogInfo(blogId);
     
     // 먼저 RSS 피드 시도
     const rssResult = await fetchBlogListFromRSS(blogId, count);
@@ -63,23 +115,79 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 네이버 블로그 상세 정보 가져오기 (Puppeteer 사용)
-async function fetchBlogInfo(blogId: string, puppeteer: typeof import('puppeteer').default) {
-  let browser;
+async function createPlaywrightContext(): Promise<{
+  browser: Browser;
+  context: BrowserContext;
+}> {
+  const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+  const browserlessEndpoint = resolveBrowserlessEndpoint();
+  const viewport = { width: 1280, height: 720 };
+  const userAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+
+  try {
+    if (browserlessEndpoint) {
+      try {
+        browser = await playwrightChromium.connect({
+          wsEndpoint: browserlessEndpoint,
+        });
+      } catch (error) {
+        console.error(
+          '[bloglist] Browserless (Playwright) 연결 실패, 로컬/Chromium 런치로 폴백합니다.',
+          error
+        );
+      }
+    }
+
+    if (!browser) {
+      const browserType = isVercel ? playwrightChromium : await getLocalChromium();
+      const launchOptions = isVercel
+        ? {
+            args: lambdaChromium.args,
+            executablePath: await lambdaChromium.executablePath(),
+            headless: true,
+          }
+        : {
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
+          };
+      browser = await browserType.launch(launchOptions);
+    }
+
+    context = await browser.newContext({
+      userAgent,
+      viewport,
+    });
+
+    return { browser, context };
+  } catch (error) {
+    await context?.close().catch(() => undefined);
+    await browser?.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+// 네이버 블로그 상세 정보 가져오기 (Playwright 사용)
+async function fetchBlogInfo(blogId: string) {
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
   
   try {
     console.log(`>>> 블로그 상세 정보 크롤링 시작: ${blogId}`);
-    
-    browser = await puppeteer.launch({ headless: true });
-    const page = await browser.newPage();
-    
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+    const { browser: createdBrowser, context: createdContext } = await createPlaywrightContext();
+    browser = createdBrowser;
+    context = createdContext;
+    const page = await context.newPage();
     
     const blogUrl = `https://blog.naver.com/${encodeURIComponent(blogId)}`;
     console.log(`>>> 블로그 URL: ${blogUrl}`);
     
     await page.goto(blogUrl, { 
-      waitUntil: 'networkidle2',
+      waitUntil: 'networkidle',
       timeout: 60000
     });
 
@@ -462,9 +570,8 @@ async function fetchBlogInfo(blogId: string, puppeteer: typeof import('puppeteer
       diaPlus: ''
     };
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    await context?.close().catch(() => undefined);
+    await browser?.close().catch(() => undefined);
   }
 }
 
