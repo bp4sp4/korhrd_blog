@@ -1,25 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import chromium from '@sparticuz/chromium';
-import puppeteerCore from 'puppeteer-core';
+import lambdaChromium from '@sparticuz/chromium';
+import {
+  chromium as playwrightChromium,
+  type Browser,
+  type BrowserContext,
+} from 'playwright-core';
 
 export const runtime = 'nodejs';
-export const maxDuration = 10;
+export const maxDuration = 20;
 
-let localPuppeteerPromise: Promise<typeof puppeteerCore> | null = null;
+let localChromiumPromise: Promise<typeof playwrightChromium> | null = null;
 
-async function getLocalPuppeteer() {
-  if (!localPuppeteerPromise) {
-    localPuppeteerPromise = import('puppeteer').then(
-      (mod) => mod.default as unknown as typeof puppeteerCore
-    );
+async function getLocalChromium() {
+  if (!localChromiumPromise) {
+    localChromiumPromise = import('playwright').then((mod) => mod.chromium);
   }
 
-  return localPuppeteerPromise;
+  return localChromiumPromise;
 }
 
 function resolveBrowserlessEndpoint() {
-  if (process.env.BROWSERLESS_WS_ENDPOINT) {
-    return process.env.BROWSERLESS_WS_ENDPOINT;
+  const explicitPlaywrightEndpoint = process.env.BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT;
+  if (explicitPlaywrightEndpoint) {
+    return explicitPlaywrightEndpoint;
+  }
+
+  const genericEndpoint = process.env.BROWSERLESS_WS_ENDPOINT;
+  if (genericEndpoint) {
+    if (genericEndpoint.includes('/playwright')) {
+      return genericEndpoint;
+    }
+    try {
+      const url = new URL(genericEndpoint);
+      if (!url.pathname.includes('/playwright')) {
+        url.pathname = url.pathname.replace(/\/?$/, '/playwright');
+      }
+      return url.toString();
+    } catch {
+      return `${genericEndpoint}${genericEndpoint.includes('?') ? '&' : '?'}launch=playwright`;
+    }
   }
 
   const token = process.env.BROWSERLESS_TOKEN;
@@ -48,8 +67,8 @@ export async function POST(request: NextRequest) {
     if (isVercel && !browserlessEndpoint) {
       return NextResponse.json(
         {
-          error: 'Vercel 환경에서는 Browserless 연결이 필요합니다.',
-          hint: '환경 변수 BROWSERLESS_TOKEN 또는 BROWSERLESS_WS_ENDPOINT를 설정해 주세요.',
+          error: 'Vercel 환경에서는 Browserless (Playwright) 연결이 필요합니다.',
+          hint: '환경 변수 BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT 또는 BROWSERLESS_TOKEN을 설정해 주세요.',
         },
         { status: 500 }
       );
@@ -83,20 +102,23 @@ async function scrapeSmartBlocks(
 ) {
   const url = `https://search.naver.com/search.naver?query=${encodeURIComponent(keyword)}`;
   const useBrowserless = !!browserlessEndpoint;
-  let browser: Awaited<ReturnType<typeof puppeteerCore.launch>> | Awaited<
-    ReturnType<typeof puppeteerCore.connect>
-  > | null = null;
-  let connectedToBrowserless = false;
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+  const viewport = { width: 1280, height: 720 };
+  const userAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   try {
     if (useBrowserless) {
       try {
-        browser = await puppeteerCore.connect({
-          browserWSEndpoint: browserlessEndpoint,
+        browser = await playwrightChromium.connect({
+          wsEndpoint: browserlessEndpoint,
         });
-        connectedToBrowserless = true;
       } catch (error) {
-        console.error('[smartblock] Browserless 연결 실패, 로컬/Chromium 런치로 폴백합니다.', error);
+        console.error(
+          '[smartblock] Browserless (Playwright) 연결 실패, 로컬/Chromium 런치로 폴백합니다.',
+          error
+        );
         if (isVercel) {
           console.warn(
             '[smartblock] Vercel 환경에서 Browserless 연결이 실패했습니다. @sparticuz/chromium 실행으로 폴백을 시도합니다. 실행 시간이 길어질 수 있습니다.'
@@ -106,44 +128,65 @@ async function scrapeSmartBlocks(
     }
 
     if (!browser) {
-      const puppeteer = isVercel ? puppeteerCore : await getLocalPuppeteer();
+      const browserType = isVercel ? playwrightChromium : await getLocalChromium();
       const launchOptions = isVercel
         ? {
-            args: chromium.args,
-            executablePath: await chromium.executablePath(),
+            args: lambdaChromium.args,
+            executablePath: await lambdaChromium.executablePath(),
             headless: true,
-            defaultViewport: { width: 1280, height: 720 },
           }
         : {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
           };
-      browser = await puppeteer.launch(launchOptions);
+      browser = await browserType.launch(launchOptions);
     }
 
-    const page = await browser.newPage();
-    const pageAny = page as any;
+    try {
+      context = await browser.newContext({
+        userAgent,
+        viewport,
+      });
+    } catch (error) {
+      console.warn('[smartblock] Playwright 새 컨텍스트 생성 실패, 기존 컨텍스트 재사용', error);
+      const existingContext = browser.contexts()[0];
+      if (!existingContext) {
+        throw error;
+      }
+      context = existingContext;
+      await context.setExtraHTTPHeaders({ 'User-Agent': userAgent });
+    }
 
-    await pageAny.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
+    const page = await context.newPage();
+    try {
+      await page.setViewportSize(viewport);
+    } catch {
+      // ignore if viewport cannot be adjusted (e.g. persistent context)
+    }
 
-    await pageAny.goto(url, {
+    await page.goto(url, {
       waitUntil: 'domcontentloaded',
-      timeout: isVercel ? 8000 : 60000,
+      timeout: isVercel ? 10000 : 60000,
     });
 
     if (isVercel) {
-      await pageAny.evaluate('window.scrollTo(0, 300)');
+      await page.evaluate(() => {
+        window.scrollTo(0, 300);
+      });
       await new Promise((resolve) => setTimeout(resolve, 400));
-      await pageAny.evaluate('window.scrollTo(0, 900)');
+      await page.evaluate(() => {
+        window.scrollTo(0, 900);
+      });
     } else {
       let prevHeight = 0;
       for (let i = 0; i < 8; i += 1) {
-        prevHeight = await pageAny.evaluate('document.body.scrollHeight');
-        await pageAny.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+        // eslint-disable-next-line no-await-in-loop
+        prevHeight = await page.evaluate(() => document.body.scrollHeight);
+        // eslint-disable-next-line no-await-in-loop
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
         await new Promise((resolve) => setTimeout(resolve, 1200));
-        const newHeight = await pageAny.evaluate('document.body.scrollHeight');
+        // eslint-disable-next-line no-await-in-loop
+        const newHeight = await page.evaluate(() => document.body.scrollHeight);
         if (newHeight === prevHeight) break;
       }
     }
@@ -157,7 +200,7 @@ async function scrapeSmartBlocks(
     try {
       await Promise.any(
         selectors.map((selector) =>
-          pageAny.waitForSelector(selector, { timeout: isVercel ? 2500 : 15000 })
+          page.waitForSelector(selector, { timeout: isVercel ? 3000 : 15000 })
         )
       );
     } catch {
@@ -165,7 +208,7 @@ async function scrapeSmartBlocks(
     }
     await new Promise((resolve) => setTimeout(resolve, isVercel ? 500 : 2000));
 
-    const smartBlocks = await pageAny.evaluate(() => {
+    const smartBlocks = await page.evaluate(() => {
       const extractBlogId = (value?: string | null) => {
         if (!value) return '';
         const directMatch = value.match(/blog\.naver\.com\/([^/?#]+)/);
@@ -311,17 +354,12 @@ async function scrapeSmartBlocks(
       return results;
     });
 
+    await page.close();
+
     return smartBlocks;
   } finally {
-    if (browser) {
-      if (connectedToBrowserless) {
-        await browser
-          .disconnect()
-          .catch(() => undefined);
-      } else {
-        await browser.close().catch(() => undefined);
-      }
-    }
+    await context?.close().catch(() => undefined);
+    await browser?.close().catch(() => undefined);
   }
 }
 
