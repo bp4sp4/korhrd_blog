@@ -27,8 +27,41 @@ export default function LoginPage() {
 
       if (signInError) throw signInError;
 
-      router.push('/');
-      router.refresh();
+      const ensureSession = async () => {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        if (session) {
+          return session;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        const {
+          data: { session: retrySession },
+          error: retryError,
+        } = await supabase.auth.getSession();
+
+        if (retryError) {
+          throw retryError;
+        }
+
+        return retrySession;
+      };
+
+      const session = await ensureSession();
+
+      if (!session) {
+        throw new Error('세션을 설정하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      }
+
+      router.replace('/');
     } catch (err: any) {
       setError(err.message || '로그인에 실패했습니다.');
     } finally {
