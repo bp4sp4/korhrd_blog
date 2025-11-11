@@ -92,8 +92,8 @@ async function scrapeSmartBlocks(
       } catch (error) {
         console.error('[smartblock] Browserless 연결 실패, 로컬/Chromium 런치로 폴백합니다.', error);
         if (isVercel) {
-          throw new Error(
-            'Browserless 연결이 거부되었습니다. 토큰 유효성, 요금제 상태, 또는 허용 라이브러리 설정을 확인하세요.'
+          console.warn(
+            '[smartblock] Vercel 환경에서 Browserless 연결이 실패했습니다. @sparticuz/chromium 실행으로 폴백을 시도합니다. 실행 시간이 길어질 수 있습니다.'
           );
         }
       }

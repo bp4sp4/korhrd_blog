@@ -168,12 +168,41 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const keywordParamRaw = searchParams.get('keyword');
     const keywordParam = keywordParamRaw ? keywordParamRaw.trim() : null;
+    const singleIdParam = searchParams.get('id');
+    const idsParamRaw = searchParams.get('ids');
+    const idsFromQuery = new Set<string>();
+    if (singleIdParam) {
+      singleIdParam
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean)
+        .forEach((value) => idsFromQuery.add(value));
+    }
+    if (idsParamRaw) {
+      idsParamRaw
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean)
+        .forEach((value) => idsFromQuery.add(value));
+    }
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.max(1, Math.min(Number(limitParam), 200)) : undefined;
 
     let records: BlogRecord[] = [];
 
-    if (keywordParam && keywordParam.length > 0) {
+    if (idsFromQuery.size > 0) {
+      const { data, error } = await adminClient
+        .from('blog_records')
+        .select('id, keyword, link, title, author')
+        .in('id', Array.from(idsFromQuery))
+        .limit(limit ?? 200);
+
+      if (error) {
+        console.error('[ranking] supabase in(id) 실패', error);
+      }
+
+      records = (data ?? []).filter((record) => !!record.keyword);
+    } else if (keywordParam && keywordParam.length > 0) {
       const trimmed = keywordParam.replace(/\s+/g, ' ').trim();
       const lower = trimmed.toLowerCase();
 
@@ -205,7 +234,7 @@ export async function GET(request: NextRequest) {
     } else {
       const { data } = await adminClient
         .from('blog_records')
-        .select('id, keyword, link, title, author, link_infos')
+        .select('id, keyword, link, title, author')
         .order('created_at', { ascending: false })
         .limit(limit ?? 200);
       records = data ?? [];
