@@ -7,11 +7,7 @@ export const maxDuration = 10;
 
 let localPuppeteerPromise: Promise<typeof puppeteerCore> | null = null;
 
-async function getPuppeteer(isVercel: boolean) {
-  if (isVercel) {
-    return puppeteerCore;
-  }
-
+async function getLocalPuppeteer() {
   if (!localPuppeteerPromise) {
     localPuppeteerPromise = import('puppeteer').then(
       (mod) => mod.default as unknown as typeof puppeteerCore
@@ -21,8 +17,21 @@ async function getPuppeteer(isVercel: boolean) {
   return localPuppeteerPromise;
 }
 
+function resolveBrowserlessEndpoint() {
+  if (process.env.BROWSERLESS_WS_ENDPOINT) {
+    return process.env.BROWSERLESS_WS_ENDPOINT;
+  }
+
+  if (process.env.BROWSERLESS_TOKEN) {
+    return `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}`;
+  }
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+  const browserlessEndpoint = resolveBrowserlessEndpoint();
 
   try {
     const { keyword } = await request.json();
@@ -30,8 +39,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'keyword is required' }, { status: 400 });
     }
 
-    const puppeteer = await getPuppeteer(isVercel);
-    const smartBlocks = await scrapeSmartBlocks(keyword, puppeteer, isVercel);
+    if (isVercel && !browserlessEndpoint) {
+      return NextResponse.json(
+        {
+          error: 'Vercel 환경에서는 Browserless 연결이 필요합니다.',
+          hint: '환경 변수 BROWSERLESS_TOKEN 또는 BROWSERLESS_WS_ENDPOINT를 설정해 주세요.',
+        },
+        { status: 500 }
+      );
+    }
+
+    const smartBlocks = await scrapeSmartBlocks(keyword, browserlessEndpoint, isVercel);
 
     return NextResponse.json({
       keyword,
@@ -54,26 +72,49 @@ export async function POST(request: NextRequest) {
 
 async function scrapeSmartBlocks(
   keyword: string,
-  puppeteer: typeof puppeteerCore | typeof import('puppeteer'),
+  browserlessEndpoint: string | null,
   isVercel: boolean
 ) {
   const url = `https://search.naver.com/search.naver?query=${encodeURIComponent(keyword)}`;
-  let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
+  const useBrowserless = !!browserlessEndpoint;
+  let browser: Awaited<ReturnType<typeof puppeteerCore.launch>> | Awaited<
+    ReturnType<typeof puppeteerCore.connect>
+  > | null = null;
+  let connectedToBrowserless = false;
 
   try {
-    const launchOptions: any = isVercel
-      ? {
-          args: chromium.args,
-          executablePath: await chromium.executablePath(),
-          headless: true,
-          defaultViewport: { width: 1280, height: 720 },
+    if (useBrowserless) {
+      try {
+        browser = await puppeteerCore.connect({
+          browserWSEndpoint: browserlessEndpoint,
+        });
+        connectedToBrowserless = true;
+      } catch (error) {
+        console.error('[smartblock] Browserless 연결 실패, 로컬/Chromium 런치로 폴백합니다.', error);
+        if (isVercel) {
+          throw new Error(
+            'Browserless 연결이 거부되었습니다. 토큰 유효성, 요금제 상태, 또는 허용 라이브러리 설정을 확인하세요.'
+          );
         }
-      : {
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        };
+      }
+    }
 
-    browser = await puppeteer.launch(launchOptions);
+    if (!browser) {
+      const puppeteer = isVercel ? puppeteerCore : await getLocalPuppeteer();
+      const launchOptions = isVercel
+        ? {
+            args: chromium.args,
+            executablePath: await chromium.executablePath(),
+            headless: true,
+            defaultViewport: { width: 1280, height: 720 },
+          }
+        : {
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
+          };
+      browser = await puppeteer.launch(launchOptions);
+    }
+
     const page = await browser.newPage();
     const pageAny = page as any;
 
@@ -267,7 +308,13 @@ async function scrapeSmartBlocks(
     return smartBlocks;
   } finally {
     if (browser) {
-      await browser.close().catch(() => undefined);
+      if (connectedToBrowserless) {
+        await browser
+          .disconnect()
+          .catch(() => undefined);
+      } else {
+        await browser.close().catch(() => undefined);
+      }
     }
   }
 }
