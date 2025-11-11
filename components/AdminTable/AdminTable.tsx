@@ -195,8 +195,7 @@ export default function AdminTable({
 
     try {
       const params = new URLSearchParams({
-        keyword: record.keyword,
-        limit: '1000',
+        id: record.id,
       });
 
       const response = await fetch(`/api/rankings/fetch?${params.toString()}`, {
