@@ -1,0 +1,367 @@
+.container {
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.description {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.actionsNote {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.form {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background-color: #ffffff;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.input {
+  min-width: 220px;
+  padding: 10px 12px;
+  color :#111827;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-green-primary);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+  background-color: #ffffff;
+}
+
+.submitButton {
+  padding: 12px 20px;
+  border-radius: 10px;
+  border: none;
+  background-color: var(--color-green-primary);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.submitButton:hover {
+  background-color: var(--color-green-hover);
+  transform: translateY(-1px);
+}
+
+.submitButton:disabled {
+  background-color: #d1d5db;
+  color: #6b7280;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sampleButton {
+  padding: 11px 18px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background-color: #f9fafb;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.sampleButton:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #cbd5f5;
+  transform: translateY(-1px);
+}
+
+.sampleButton:disabled {
+  cursor: not-allowed;
+  color: #9ca3af;
+  border-color: #e5e7eb;
+}
+
+.tableWrapper {
+  border-radius: 16px;
+  background-color: #ffffff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead {
+  background-color: #f9fafb;
+}
+
+.table th {
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4b5563;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  color: #1f2937;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.emptyState {
+  padding: 48px;
+  text-align: center;
+  border-radius: 16px;
+  border: 2px dashed #d1d5db;
+  color: #6b7280;
+  background-color: #f9fafb;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 9999px;
+  background-color: #eef2ff;
+  font-weight: 600;
+  color: #312e81;
+  font-size: 13px;
+}
+
+.badge img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.badgeMuted {
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+.badgeWarning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.link {
+  color: var(--color-green-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.errorMessage {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.successMessage {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background-color: #dcfce7;
+  color: #15803d;
+  font-size: 13px;
+}
+
+.contentPlaceholder {
+  padding: 40px;
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  text-align: center;
+  background-color: #f9fafb;
+  color: #6b7280;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.filterSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background-color: #f9fafb;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.filterLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.filterSelect {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background-color: #ffffff;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-width: 180px;
+}
+
+.filterSelect:focus {
+  outline: none;
+  border-color: var(--color-green-primary);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+}
+
+.keywordGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.categorySection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.categorySectionLarge {
+  
+  padding: 24px;
+  border-radius: 16px;
+  
+}
+
+.categoryTitle {
+  font-size: 24px;
+  font-weight: 800;
+  color: #111827;
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.categorySectionLarge .categoryTitle {
+  font-size: 32px;
+  color: black;
+  
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  border-radius: 8px 8px 0 0;
+  overflow-x: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.tab {
+  padding: 14px 20px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.tab:hover {
+  color: #374151;
+  background-color: #f9fafb;
+}
+
+.tabActive {
+  color: var(--color-green-primary);
+  border-bottom-color: var(--color-green-primary);
+}
+
+.tabDisabled {
+  color: #d1d5db;
+  opacity: 0.5;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.tabDisabled:hover {
+  color: #9ca3af;
+  background-color: #f3f4f6;
+}
+
+.tabCount {
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+  opacity: 0.7;
+}
+
+

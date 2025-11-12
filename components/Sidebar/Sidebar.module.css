@@ -77,6 +77,15 @@
   font-weight: 700;
 }
 
+.navSectionHeader {
+  margin: 24px 16px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .navItem:hover {
   background-color: #9ee2bf;
   border-color: #a7f3d0;

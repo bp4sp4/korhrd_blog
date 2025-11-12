@@ -71,6 +71,23 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
           </a>
         </div>
 
+        <div className={styles.navSectionHeader}>키워드</div>
+        <div className={styles.navSection}>
+          <a
+            href="/keyword/menu"
+            className={`${styles.navItem} ${
+              pathname === '/keyword/menu' ? styles.active : ''
+            }`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick('/keyword/menu');
+            }}
+          >
+            <List size={20} className={styles.navIcon} />
+            <span className={styles.navText}>키워드 메뉴판</span>
+          </a>
+        </div>
+
         <div className={styles.navSection}>
           <a
             href="/keyword"
