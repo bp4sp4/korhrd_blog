@@ -33,6 +33,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // owner 역할은 계정 생성 시 설정할 수 없음
+    if (role === 'owner') {
+      return NextResponse.json(
+        { error: '시스템 소유자 역할은 계정 생성 시 설정할 수 없습니다.' },
+        { status: 400 }
+      );
+    }
+
     // Create user using admin client with service role key
     const adminClient = createAdminClient();
 

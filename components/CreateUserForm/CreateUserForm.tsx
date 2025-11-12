@@ -16,7 +16,7 @@ export default function CreateUserForm() {
     password: '',
     name: '',
     teamId: '',
-    role: 'member' as 'owner' | 'super_admin' | 'admin' | 'member',
+    role: 'member' as 'super_admin' | 'admin' | 'member',
   });
   const [teams, setTeams] = useState<Team[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -199,9 +199,6 @@ export default function CreateUserForm() {
               <option value="member">팀원</option>
               <option value="admin">관리자</option>
               <option value="super_admin">최고관리자</option>
-              {currentUserRole === 'owner' && (
-                <option value="owner">시스템 소유자</option>
-              )}
             </select>
           </div>
         </div>

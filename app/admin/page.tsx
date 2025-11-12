@@ -19,6 +19,7 @@ async function getUsers() {
         name
       )
     `)
+    .neq('role', 'owner')
     .order('created_at', { ascending: false });
 
   if (error) {

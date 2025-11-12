@@ -25,7 +25,9 @@ interface UserListProps {
 }
 
 export default function UserList({ initialUsers, isSuperAdmin = false }: UserListProps) {
-  const [users, setUsers] = useState(initialUsers);
+  // owner 역할을 가진 사용자는 제외
+  const filteredInitialUsers = initialUsers.filter((user) => user.role !== 'owner');
+  const [users, setUsers] = useState(filteredInitialUsers);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -74,6 +76,7 @@ export default function UserList({ initialUsers, isSuperAdmin = false }: UserLis
             name
           )
         `)
+        .neq('role', 'owner')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
