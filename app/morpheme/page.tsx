@@ -344,7 +344,9 @@ export default function MorphemePage() {
     '자위', '보지', '자지', '엉덩이', '고자', '똥꼬', '애널', '고환', '꼬추', '사까시', '애무',
     
     // 욕설 및 비속어
-    '개새끼', '시발', '병신', '욕설'
+    '개새끼', '시발', '병신', '욕설',
+    
+    // 과도한 의무 표현은 "야 해요" 패턴으로 처리하므로 여기서는 제외
 
   ];
 
@@ -370,6 +372,27 @@ export default function MorphemePage() {
     type HighlightItem = { start: number; end: number; type: 'forbidden' | 'commercial'; text: string };
     const highlights: HighlightItem[] = [];
     
+    // 0. "야 해요" 또는 "야해요" 패턴 감지 (앞에 뭐가 붙든 모두 금칙어, 하지만 "야 해요" 부분만 하이라이트)
+    // "되어야 해요", "해야 해요" 등에서 "야 해요" 또는 "야해요" 부분만 찾기
+    // "야"로 끝나는 한글 단어 뒤에 공백과 "해요"가 오는 패턴 찾기
+    const yaHaeyoPattern = /([가-힣]+야)(\s*)(해요)/gi;
+    let match;
+    const yaHaeyoPatternCopy = new RegExp(yaHaeyoPattern.source, yaHaeyoPattern.flags);
+    while ((match = yaHaeyoPatternCopy.exec(text)) !== null) {
+      // "야 해요" 또는 "야해요" 부분만 하이라이트
+      // "야"의 위치: match.index + match[1].length - 1
+      // "해요"의 끝 위치: match.index + match[0].length
+      const yaStartIndex = match.index + match[1].length - 1; // "야"의 시작 위치
+      const yaHaeyoEndIndex = match.index + match[0].length; // "해요"의 끝 위치
+      
+      highlights.push({
+        start: yaStartIndex,
+        end: yaHaeyoEndIndex,
+        type: 'forbidden',
+        text: text.substring(yaStartIndex, yaHaeyoEndIndex) // "야 해요" 또는 "야해요" 부분
+      });
+    }
+
     // 1. 금칙어 위치 기록
     forbiddenKeywords.forEach(keyword => {
       const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
