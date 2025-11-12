@@ -1118,7 +1118,7 @@ export default function AdminTable({
                           disabled={!canModify}
                         />
                       </td>
-                      <td>{item.id}</td>
+                      <td className={styles.idCell}>{item.id}</td>
                       <td>{item.field}</td>
                       <td>{item.keyword}</td>
                       <td>
@@ -1179,7 +1179,7 @@ export default function AdminTable({
                         )}
                       </td>
                       <td>{item.author}</td>
-                      <td>{item.specialNote || '-'}</td>
+                      <td className={styles.specialNoteCell}>{item.specialNote || '-'}</td>
                       <td>
                         {item.created_at
                           ? new Date(item.created_at).toLocaleDateString('ko-KR', {

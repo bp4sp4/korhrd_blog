@@ -45,6 +45,8 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
   const [activeTab, setActiveTab] = useState<Category>('사회복지사');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingBlogId, setIsFetchingBlogId] = useState(false);
+  const [searchVolumes, setSearchVolumes] = useState<Record<string, number | null>>({});
+  const [fetchingSearchVolumes, setFetchingSearchVolumes] = useState<Set<string>>(new Set());
   const isInitialLoad = useRef(true);
   const fetchBlogIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -154,6 +156,125 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
 
     return () => clearTimeout(timer);
   }, [keywords, fetchState, handleAutoUpdateBlogIdsSilent]);
+
+  // 검색량이 없는 키워드들의 검색량 자동 가져오기 (DB 저장 없이 클라이언트 상태만 사용)
+  const fetchSearchVolumesForKeywords = useCallback(async (keywordsToFetch: KeywordRecord[], forceRefresh = false) => {
+    // forceRefresh가 false인 경우: 이미 가져온 키워드나 가져오는 중인 키워드는 제외
+    // forceRefresh가 true인 경우: 가져오는 중인 키워드만 제외 (모든 키워드 새로고침)
+    // DB에 저장하지 않으므로 클라이언트 상태만 확인
+    const keywordsNeedingVolume = keywordsToFetch.filter((item) => {
+      const isFetching = fetchingSearchVolumes.has(item.keyword);
+      if (forceRefresh) {
+        return !isFetching; // 새로고침 모드: 가져오는 중인 것만 제외
+      }
+      // 클라이언트 상태에 이미 있으면 제외 (한번 가져온 값 유지)
+      const isAlreadyFetched = searchVolumes[item.keyword] !== undefined;
+      return !isAlreadyFetched && !isFetching;
+    });
+
+    if (keywordsNeedingVolume.length === 0) {
+      return;
+    }
+
+    // 한 번에 최대 10개씩 처리 (API 호출 제한 고려)
+    const batchSize = 10;
+    const batches: KeywordRecord[][] = [];
+    for (let i = 0; i < keywordsNeedingVolume.length; i += batchSize) {
+      batches.push(keywordsNeedingVolume.slice(i, i + batchSize));
+    }
+
+    // 각 배치를 순차적으로 처리
+    for (const batch of batches) {
+      const promises = batch.map(async (item) => {
+        setFetchingSearchVolumes((prev) => new Set(prev).add(item.keyword));
+        try {
+          const response = await fetch('/api/keywords/test-search-volume', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ keyword: item.keyword }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const searchVolume = data.search_volume?.actual_search_count ?? 
+                                data.search_volume?.total_combined_ratio ?? 
+                                null;
+            setSearchVolumes((prev) => ({
+              ...prev,
+              [item.keyword]: searchVolume,
+            }));
+          } else {
+            setSearchVolumes((prev) => ({
+              ...prev,
+              [item.keyword]: null,
+            }));
+          }
+        } catch (err) {
+          console.warn(`[keyword-menu] Failed to fetch search volume for ${item.keyword}`, err);
+          setSearchVolumes((prev) => ({
+            ...prev,
+            [item.keyword]: null,
+          }));
+        } finally {
+          setFetchingSearchVolumes((prev) => {
+            const next = new Set(prev);
+            next.delete(item.keyword);
+            return next;
+          });
+        }
+      });
+
+      await Promise.all(promises);
+      // 배치 간 딜레이 (API 호출 제한 고려)
+      if (batches.indexOf(batch) < batches.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  }, [searchVolumes, fetchingSearchVolumes]);
+
+  // 키워드 목록이 로드된 후 검색량이 없는 키워드들의 검색량 자동 가져오기 (즉시 실행)
+  useEffect(() => {
+    if (keywords.length === 0 || fetchState === 'loading') return;
+
+    // 즉시 검색량 가져오기 실행
+    const activeTabKeywords = keywords.filter((item) => {
+      const itemCategory = (item.category as Category) || '사회복지사';
+      return itemCategory === activeTab;
+    });
+
+    const keywordsWithoutVolume = activeTabKeywords.filter((item) => {
+      const hasSearchVolume = item.blog?.search_volume !== null && item.blog?.search_volume !== undefined;
+      const isAlreadyFetched = searchVolumes[item.keyword] !== undefined;
+      return !hasSearchVolume && !isAlreadyFetched;
+    });
+
+    if (keywordsWithoutVolume.length > 0) {
+      void fetchSearchVolumesForKeywords(keywordsWithoutVolume);
+    }
+  }, [keywords, fetchState, activeTab, searchVolumes, fetchSearchVolumesForKeywords]);
+
+  // 1시간마다 모든 키워드의 검색량 자동 새로고침
+  useEffect(() => {
+    if (keywords.length === 0 || fetchState === 'loading') return;
+
+    // 1시간 = 3600000ms
+    const interval = setInterval(() => {
+      // 활성 탭에 해당하는 모든 키워드의 검색량 새로고침
+      const activeTabKeywords = keywords.filter((item) => {
+        const itemCategory = (item.category as Category) || '사회복지사';
+        return itemCategory === activeTab;
+      });
+
+      if (activeTabKeywords.length > 0) {
+        console.log(`[keyword-menu] 1시간마다 검색량 새로고침 시작: ${activeTabKeywords.length}개 키워드`);
+        void fetchSearchVolumesForKeywords(activeTabKeywords, true); // forceRefresh = true
+      }
+    }, 3600000); // 1시간
+
+    return () => clearInterval(interval);
+  }, [keywords, fetchState, activeTab, fetchSearchVolumesForKeywords]);
 
   // 키워드 입력 시 블로그 ID 자동 가져오기
   useEffect(() => {
@@ -460,7 +581,7 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       </header>
 
       <div className={styles.actions}>
-        <span className={styles.actionsNote}>키워드만 등록해두고 나중에 블로그 ID를 연결해도 괜찮아요.</span>
+        
         {updatableKeywordsCount > 0 && (
           <button
             type="button"
@@ -599,7 +720,10 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
                         ranking && ranking > 0 && ranking <= 3
                           ? styles.badge
                           : `${styles.badge} ${styles.badgeMuted}`;
-                      const searchVolume = item.blog?.search_volume ?? null;
+                      // 클라이언트 상태의 검색량을 우선 사용 (한번 가져온 값 유지), 없으면 DB 값 사용
+                      // DB에 저장하지 않으므로 비용 절감
+                      const searchVolume = searchVolumes[item.keyword] ?? item.blog?.search_volume ?? null;
+                      const isFetchingVolume = fetchingSearchVolumes.has(item.keyword);
 
                       return (
                         <tr key={item.id}>
@@ -611,7 +735,15 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
                             </span>
                           </td>
                           <td>{hasBlog ? item.blog_id : '-'}</td>
-                          <td>{searchVolume !== null ? searchVolume.toLocaleString() : '-'}</td>
+                          <td>
+                            {isFetchingVolume ? (
+                              <span style={{ color: '#6b7280', fontSize: '12px' }}>조회 중...</span>
+                            ) : searchVolume !== null ? (
+                              searchVolume.toLocaleString()
+                            ) : (
+                              '-'
+                            )}
+                          </td>
                           <td>
                             {new Date(
                               item.blog?.created_at || item.created_at

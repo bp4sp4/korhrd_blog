@@ -728,7 +728,7 @@ export default function TableClient({
                           />
                         )}
                       </td>
-                      <td>{item.id}</td>
+                      <td className={styles.idCell}>{item.id}</td>
                       <td>{item.field}</td>
                       <td>{item.keyword}</td>
                       <td>
@@ -774,7 +774,7 @@ export default function TableClient({
                             })
                           : '등록일 없음'}
                       </td>
-                      <td>{item.specialNote || '-'}</td>
+                      <td className={styles.specialNoteCell}>{item.specialNote || '-'}</td>
                     </tr>
                   );
                 })

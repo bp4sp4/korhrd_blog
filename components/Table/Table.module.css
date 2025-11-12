@@ -14,6 +14,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  table-layout: fixed;
 }
 
 .tableHeader {
@@ -29,6 +30,8 @@
   color: #374151;
   white-space: nowrap;
   border-right: 1px solid #e5e7eb;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tableHeader th:last-child {
@@ -50,10 +53,37 @@
   color: #4b5563;
   border-right: 1px solid #e5e7eb;
   vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tableBody td:last-child {
   border-right: none;
+}
+
+/* 특이사항 셀 스크롤 스타일 */
+.specialNoteCell {
+  max-height: 100px;
+  overflow-y: auto;
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: normal !important;
+}
+
+/* 아이디 셀 스타일 - 말줄임표 제거 */
+.idCell {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+/* 체크박스 셀 스타일 - 말줄임표 제거 */
+.tableHeader th:first-child,
+.tableBody td:first-child {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
 }
 
 .link {
