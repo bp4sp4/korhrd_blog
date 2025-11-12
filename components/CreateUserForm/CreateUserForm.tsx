@@ -16,13 +16,35 @@ export default function CreateUserForm() {
     password: '',
     name: '',
     teamId: '',
-    role: 'member' as 'super_admin' | 'admin' | 'member',
+    role: 'member' as 'owner' | 'super_admin' | 'admin' | 'member',
   });
   const [teams, setTeams] = useState<Team[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loadingTeams, setLoadingTeams] = useState(true);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
+  // 현재 사용자 역할 가져오기
+  useEffect(() => {
+    const fetchCurrentUserRole = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+          setCurrentUserRole(profile?.role || null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch current user role:', err);
+      }
+    };
+    fetchCurrentUserRole();
+  }, []);
 
   useEffect(() => {
     const fetchTeams = async () => {
@@ -177,6 +199,9 @@ export default function CreateUserForm() {
               <option value="member">팀원</option>
               <option value="admin">관리자</option>
               <option value="super_admin">최고관리자</option>
+              {currentUserRole === 'owner' && (
+                <option value="owner">시스템 소유자</option>
+              )}
             </select>
           </div>
         </div>

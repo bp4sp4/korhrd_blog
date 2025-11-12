@@ -19,8 +19,8 @@ export async function DELETE(request: NextRequest) {
       .eq('id', user.id)
       .single();
 
-    if (profile?.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden: Only super admin can delete users' }, { status: 403 });
+    if (profile?.role !== 'owner' && profile?.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can delete users' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

@@ -13,15 +13,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is super_admin
+    // Check if user is owner or super_admin
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (profile?.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden: Only super admin can create users' }, { status: 403 });
+    if (profile?.role !== 'owner' && profile?.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can create users' }, { status: 403 });
     }
 
     const { email, password, name, teamId, role } = await request.json();
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     );
 
     const userRole = role || 'member';
-    const isAdmin = userRole === 'super_admin' || userRole === 'admin';
+    const isAdmin = userRole === 'owner' || userRole === 'super_admin' || userRole === 'admin';
     const normalizedTeamId = teamId || null;
 
     if (existingUser) {

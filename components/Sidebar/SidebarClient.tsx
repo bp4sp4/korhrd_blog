@@ -6,9 +6,10 @@ import styles from './Sidebar.module.css';
 
 interface SidebarClientProps {
   isAdmin: boolean;
+  isOwner?: boolean;
 }
 
-export default function SidebarClient({ isAdmin }: SidebarClientProps) {
+export default function SidebarClient({ isAdmin, isOwner = false }: SidebarClientProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -119,32 +120,36 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
                 <span className={styles.navText}>관리자</span>
               </a>
             </div>
-            <div className={styles.navSection}>
-              <a
-                href="/admin/bloglist"
-                className={`${styles.navItem} ${pathname === '/admin/bloglist' ? styles.active : ''}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleNavClick('/admin/bloglist');
-                }}
-              >
-                <ClipboardList size={20} className={styles.navIcon} />
-                <span className={styles.navText}>블로그 관리</span>
-              </a>
-            </div>
-            <div className={styles.navSection}>
-              <a
-                href="/admin/activity-log"
-                className={`${styles.navItem} ${pathname === '/admin/activity-log' ? styles.active : ''}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleNavClick('/admin/activity-log');
-                }}
-              >
-                <ClipboardList size={20} className={styles.navIcon} />
-                <span className={styles.navText}>활동 로그</span>
-              </a>
-            </div>
+            {isOwner && (
+              <>
+                <div className={styles.navSection}>
+                  <a
+                    href="/admin/bloglist"
+                    className={`${styles.navItem} ${pathname === '/admin/bloglist' ? styles.active : ''}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleNavClick('/admin/bloglist');
+                    }}
+                  >
+                    <ClipboardList size={20} className={styles.navIcon} />
+                    <span className={styles.navText}>블로그 관리</span>
+                  </a>
+                </div>
+                <div className={styles.navSection}>
+                  <a
+                    href="/admin/activity-log"
+                    className={`${styles.navItem} ${pathname === '/admin/activity-log' ? styles.active : ''}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleNavClick('/admin/activity-log');
+                    }}
+                  >
+                    <ClipboardList size={20} className={styles.navIcon} />
+                    <span className={styles.navText}>활동 로그</span>
+                  </a>
+                </div>
+              </>
+            )}
           </>
         )}
       </nav>

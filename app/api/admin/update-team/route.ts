@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
+export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
     const {
@@ -21,27 +21,28 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (profile?.role !== 'owner' && profile?.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can create teams' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can update teams' }, { status: 403 });
     }
 
-    const { name, description, group_id } = await request.json();
+    const { id, name, description, group_id } = await request.json();
 
-    if (!name) {
+    if (!id || !name) {
       return NextResponse.json(
-        { error: 'Team name is required' },
+        { error: 'Team ID and name are required' },
         { status: 400 }
       );
     }
 
-    // Create team using admin client
+    // Update team using admin client
     const adminClient = createAdminClient();
     const { data: teamData, error: teamError } = await adminClient
       .from('teams')
-      .insert({
+      .update({
         name,
         description: description || null,
         group_id: group_id || null,
       })
+      .eq('id', id)
       .select()
       .single();
 

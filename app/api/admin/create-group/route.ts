@@ -21,35 +21,34 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (profile?.role !== 'owner' && profile?.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can create teams' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can create groups' }, { status: 403 });
     }
 
-    const { name, description, group_id } = await request.json();
+    const { name, description } = await request.json();
 
     if (!name) {
       return NextResponse.json(
-        { error: 'Team name is required' },
+        { error: 'Group name is required' },
         { status: 400 }
       );
     }
 
-    // Create team using admin client
+    // Create group using admin client
     const adminClient = createAdminClient();
-    const { data: teamData, error: teamError } = await adminClient
-      .from('teams')
+    const { data: groupData, error: groupError } = await adminClient
+      .from('groups')
       .insert({
         name,
         description: description || null,
-        group_id: group_id || null,
       })
       .select()
       .single();
 
-    if (teamError) {
-      return NextResponse.json({ error: teamError.message }, { status: 400 });
+    if (groupError) {
+      return NextResponse.json({ error: groupError.message }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, team: teamData });
+    return NextResponse.json({ success: true, group: groupData });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

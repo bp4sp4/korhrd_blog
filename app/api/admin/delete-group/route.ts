@@ -21,37 +21,37 @@ export async function DELETE(request: NextRequest) {
       .single();
 
     if (profile?.role !== 'owner' && profile?.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can delete teams' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can delete groups' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const teamId = searchParams.get('teamId');
+    const groupId = searchParams.get('groupId');
 
-    if (!teamId) {
+    if (!groupId) {
       return NextResponse.json(
-        { error: 'Team ID is required' },
+        { error: 'Group ID is required' },
         { status: 400 }
       );
     }
 
-    // Delete team using admin client
+    // Delete group using admin client
     const adminClient = createAdminClient();
     
-    // First, remove all members from the team (set team_id to null)
+    // First, remove all teams from the group (set group_id to null)
     const { error: updateError } = await adminClient
-      .from('profiles')
-      .update({ team_id: null })
-      .eq('team_id', teamId);
+      .from('teams')
+      .update({ group_id: null })
+      .eq('group_id', groupId);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 400 });
     }
 
-    // Then delete the team
+    // Then delete the group
     const { error: deleteError } = await adminClient
-      .from('teams')
+      .from('groups')
       .delete()
-      .eq('id', teamId);
+      .eq('id', groupId);
 
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 400 });

@@ -8,9 +8,10 @@ interface AddRecordButtonProps {
   currentUserId?: string | null;
   currentUserName?: string | null;
   userRole?: string | null;
+  userTeamId?: string | null;
 }
 
-export default function AddRecordButton({ currentUserId, currentUserName, userRole = 'member' }: AddRecordButtonProps) {
+export default function AddRecordButton({ currentUserId, currentUserName, userRole = 'member', userTeamId = null }: AddRecordButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
@@ -29,6 +30,7 @@ export default function AddRecordButton({ currentUserId, currentUserName, userRo
         currentUserId={currentUserId}
         currentUserName={currentUserName}
         userRole={userRole}
+        userTeamId={userTeamId}
       />
     </>
   );

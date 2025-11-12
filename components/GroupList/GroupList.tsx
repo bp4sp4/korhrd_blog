@@ -1,29 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import styles from './TeamList.module.css';
+import styles from './GroupList.module.css';
 
 interface Group {
   id: string;
   name: string;
-}
-
-interface Team {
-  id: string;
-  name: string;
   description: string | null;
-  group_id: string | null;
   created_at: string;
-  groups?: Group | null;
+  team_count?: number;
 }
 
-interface TeamListProps {
+interface GroupListProps {
   isSuperAdmin?: boolean;
 }
 
-export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
-  const [teams, setTeams] = useState<Team[]>([]);
+export default function GroupList({ isSuperAdmin = false }: GroupListProps) {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -31,29 +23,19 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const fetchTeams = async () => {
+  const fetchGroups = async () => {
     try {
       setLoading(true);
-      const [teamsResponse, groupsResponse] = await Promise.all([
-        fetch('/api/admin/teams'),
-        fetch('/api/admin/groups'),
-      ]);
-      
-      const teamsResult = await teamsResponse.json();
-      const groupsResult = await groupsResponse.json();
-      
-      if (teamsResponse.ok) {
-        setTeams(teamsResult.teams || []);
+      const response = await fetch('/api/admin/groups');
+      const result = await response.json();
+      if (response.ok) {
+        setGroups(result.groups || []);
       } else {
-        setError(teamsResult.error || '팀 목록을 불러오는 중 오류가 발생했습니다.');
-      }
-      
-      if (groupsResponse.ok) {
-        setGroups(groupsResult.groups || []);
+        setError(result.error || '그룹 목록을 불러오는 중 오류가 발생했습니다.');
       }
     } catch (err: any) {
-      setError('팀 목록을 불러오는 중 오류가 발생했습니다.');
-      console.error('Error fetching teams:', err);
+      setError('그룹 목록을 불러오는 중 오류가 발생했습니다.');
+      console.error('Error fetching groups:', err);
     } finally {
       setLoading(false);
     }
@@ -61,82 +43,81 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
 
   useEffect(() => {
     if (isSuperAdmin) {
-      fetchTeams();
+      fetchGroups();
     }
   }, [isSuperAdmin]);
 
-  const handleDelete = async (teamId: string, teamName: string) => {
-    if (!confirm(`"${teamName}" 팀을 정말 삭제하시겠습니까?`)) {
+  const handleDelete = async (groupId: string, groupName: string) => {
+    if (!confirm(`"${groupName}" 그룹을 정말 삭제하시겠습니까? 이 그룹에 속한 모든 팀의 그룹 연결이 해제됩니다.`)) {
       return;
     }
 
-    setDeletingId(teamId);
+    setDeletingId(groupId);
     setError('');
     setSuccess('');
 
     try {
-      const response = await fetch(`/api/admin/delete-team?teamId=${teamId}`, {
+      const response = await fetch(`/api/admin/delete-group?groupId=${groupId}`, {
         method: 'DELETE',
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || '팀 삭제 중 오류가 발생했습니다.');
+        throw new Error(result.error || '그룹 삭제 중 오류가 발생했습니다.');
       }
 
-      setSuccess('팀이 성공적으로 삭제되었습니다.');
-      fetchTeams();
+      setSuccess('그룹이 성공적으로 삭제되었습니다.');
+      fetchGroups();
       
       setTimeout(() => {
         setSuccess('');
       }, 3000);
     } catch (err: any) {
-      setError(err.message || '팀 삭제 중 오류가 발생했습니다.');
+      setError(err.message || '그룹 삭제 중 오류가 발생했습니다.');
     } finally {
       setDeletingId(null);
     }
   };
 
-  const handleEdit = (team: Team) => {
-    setEditingId(team.id);
+  const handleEdit = (group: Group) => {
+    setEditingId(group.id);
     setError('');
     setSuccess('');
   };
 
-  const handleSaveEdit = async (teamId: string, name: string, description: string, groupId: string | null) => {
+  const handleSaveEdit = async (groupId: string, name: string, description: string) => {
     setError('');
     setSuccess('');
 
     try {
-      const response = await fetch('/api/admin/update-team', {
+      const response = await fetch('/api/admin/update-group', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          id: teamId,
+          id: groupId,
           name,
           description: description || null,
-          group_id: groupId || null,
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || '팀 수정 중 오류가 발생했습니다.');
+        throw new Error(result.error || '그룹 수정 중 오류가 발생했습니다.');
       }
 
-      setSuccess('팀이 성공적으로 수정되었습니다.');
+      setSuccess('그룹이 성공적으로 수정되었습니다.');
       setEditingId(null);
-      fetchTeams();
+      fetchGroups();
       
       setTimeout(() => {
         setSuccess('');
       }, 3000);
     } catch (err: any) {
-      setError(err.message || '팀 수정 중 오류가 발생했습니다.');
+      setError(err.message || '그룹 수정 중 오류가 발생했습니다.');
     }
   };
 
@@ -151,11 +132,11 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
   }
 
   return (
-    <div className={styles.teamListContainer}>
+    <div className={styles.groupListContainer}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 className={styles.title}>팀 관리</h2>
+        <h2 className={styles.title}>그룹 관리</h2>
         <button
-          onClick={fetchTeams}
+          onClick={fetchGroups}
           style={{
             padding: '8px 16px',
             backgroundColor: '#f3f4f6',
@@ -165,7 +146,6 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
             fontSize: '14px',
             fontWeight: '700',
             cursor: 'pointer',
-            
           }}
         >
           새로고침
@@ -182,22 +162,21 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
           <table className={styles.table}>
             <thead className={styles.tableHeader}>
               <tr>
-                <th>팀 이름</th>
-                <th>그룹</th>
+                <th>그룹 이름</th>
                 <th>설명</th>
+                <th>소속 팀 수</th>
                 <th>생성일</th>
                 <th>작업</th>
               </tr>
             </thead>
             <tbody className={styles.tableBody}>
-              {teams.length > 0 ? (
-                teams.map((team) => (
-                  <TeamRow
-                    key={team.id}
-                    team={team}
-                    groups={groups}
-                    isEditing={editingId === team.id}
-                    onEdit={() => handleEdit(team)}
+              {groups.length > 0 ? (
+                groups.map((group) => (
+                  <GroupRow
+                    key={group.id}
+                    group={group}
+                    isEditing={editingId === group.id}
+                    onEdit={() => handleEdit(group)}
                     onSave={handleSaveEdit}
                     onCancel={handleCancelEdit}
                     onDelete={handleDelete}
@@ -207,7 +186,7 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
               ) : (
                 <tr>
                   <td colSpan={5} className={styles.emptyState}>
-                    <p>등록된 팀이 없습니다.</p>
+                    <p>등록된 그룹이 없습니다.</p>
                   </td>
                 </tr>
               )}
@@ -219,29 +198,26 @@ export default function TeamList({ isSuperAdmin = false }: TeamListProps) {
   );
 }
 
-interface TeamRowProps {
-  team: Team;
-  groups: Group[];
+interface GroupRowProps {
+  group: Group;
   isEditing: boolean;
   onEdit: () => void;
-  onSave: (id: string, name: string, description: string, groupId: string | null) => void;
+  onSave: (id: string, name: string, description: string) => void;
   onCancel: () => void;
   onDelete: (id: string, name: string) => void;
   deletingId: string | null;
 }
 
-function TeamRow({ team, groups, isEditing, onEdit, onSave, onCancel, onDelete, deletingId }: TeamRowProps) {
-  const [editName, setEditName] = useState(team.name);
-  const [editDescription, setEditDescription] = useState(team.description || '');
-  const [editGroupId, setEditGroupId] = useState(team.group_id || '');
+function GroupRow({ group, isEditing, onEdit, onSave, onCancel, onDelete, deletingId }: GroupRowProps) {
+  const [editName, setEditName] = useState(group.name);
+  const [editDescription, setEditDescription] = useState(group.description || '');
 
   useEffect(() => {
     if (isEditing) {
-      setEditName(team.name);
-      setEditDescription(team.description || '');
-      setEditGroupId(team.group_id || '');
+      setEditName(group.name);
+      setEditDescription(group.description || '');
     }
-  }, [isEditing, team.name, team.description, team.group_id]);
+  }, [isEditing, group.name, group.description]);
 
   if (isEditing) {
     return (
@@ -255,20 +231,6 @@ function TeamRow({ team, groups, isEditing, onEdit, onSave, onCancel, onDelete, 
           />
         </td>
         <td>
-          <select
-            className={styles.editSelect}
-            value={editGroupId}
-            onChange={(e) => setEditGroupId(e.target.value)}
-          >
-            <option value="">그룹 없음</option>
-            {groups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </select>
-        </td>
-        <td>
           <input
             type="text"
             className={styles.editInput}
@@ -277,8 +239,9 @@ function TeamRow({ team, groups, isEditing, onEdit, onSave, onCancel, onDelete, 
             placeholder="설명 (선택사항)"
           />
         </td>
+        <td>{group.team_count || 0}</td>
         <td>
-          {new Date(team.created_at).toLocaleDateString('ko-KR', {
+          {new Date(group.created_at).toLocaleDateString('ko-KR', {
             year: 'numeric',
             month: 'long',
             day: 'numeric',
@@ -290,7 +253,7 @@ function TeamRow({ team, groups, isEditing, onEdit, onSave, onCancel, onDelete, 
           <div className={styles.editActions}>
             <button
               className={styles.saveButton}
-              onClick={() => onSave(team.id, editName, editDescription, editGroupId || null)}
+              onClick={() => onSave(group.id, editName, editDescription)}
             >
               저장
             </button>
@@ -308,11 +271,11 @@ function TeamRow({ team, groups, isEditing, onEdit, onSave, onCancel, onDelete, 
 
   return (
     <tr>
-      <td>{team.name}</td>
-      <td>{team.groups?.name || '-'}</td>
-      <td>{team.description || '-'}</td>
+      <td>{group.name}</td>
+      <td>{group.description || '-'}</td>
+      <td>{group.team_count || 0}</td>
       <td>
-        {new Date(team.created_at).toLocaleDateString('ko-KR', {
+        {new Date(group.created_at).toLocaleDateString('ko-KR', {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
@@ -329,11 +292,11 @@ function TeamRow({ team, groups, isEditing, onEdit, onSave, onCancel, onDelete, 
             수정
           </button>
           <button
-            className={`${styles.deleteButton} ${deletingId === team.id ? styles.deleting : ''}`}
-            onClick={() => onDelete(team.id, team.name)}
-            disabled={deletingId === team.id}
+            className={`${styles.deleteButton} ${deletingId === group.id ? styles.deleting : ''}`}
+            onClick={() => onDelete(group.id, group.name)}
+            disabled={deletingId === group.id}
           >
-            {deletingId === team.id ? '삭제 중...' : '삭제'}
+            {deletingId === group.id ? '삭제 중...' : '삭제'}
           </button>
         </div>
       </td>

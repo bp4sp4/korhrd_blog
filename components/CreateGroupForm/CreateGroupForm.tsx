@@ -1,44 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import styles from './CreateTeamForm.module.css';
+import { useState } from 'react';
+import styles from './CreateGroupForm.module.css';
 
-interface Group {
-  id: string;
-  name: string;
-}
-
-export default function CreateTeamForm() {
+export default function CreateGroupForm() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    groupId: '',
   });
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [loadingGroups, setLoadingGroups] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  useEffect(() => {
-    const fetchGroups = async () => {
-      try {
-        setLoadingGroups(true);
-        const response = await fetch('/api/admin/groups');
-        const result = await response.json();
-        if (response.ok) {
-          setGroups(result.groups || []);
-        }
-      } catch (err) {
-        console.error('Error fetching groups:', err);
-      } finally {
-        setLoadingGroups(false);
-      }
-    };
-    fetchGroups();
-  }, []);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -54,14 +28,14 @@ export default function CreateTeamForm() {
     setSuccess('');
 
     if (!formData.name) {
-      setError('팀 이름을 입력해주세요.');
+      setError('그룹 이름을 입력해주세요.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/admin/create-team', {
+      const response = await fetch('/api/admin/create-group', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,70 +43,48 @@ export default function CreateTeamForm() {
         body: JSON.stringify({
           name: formData.name,
           description: formData.description || null,
-          group_id: formData.groupId || null,
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || '팀 생성 중 오류가 발생했습니다.');
+        throw new Error(result.error || '그룹 생성 중 오류가 발생했습니다.');
       }
 
-      setSuccess('팀이 성공적으로 생성되었습니다.');
+      setSuccess('그룹이 성공적으로 생성되었습니다.');
       setFormData({
         name: '',
         description: '',
-        groupId: '',
       });
       
-      // 페이지 새로고침하여 팀 목록 업데이트
+      // 페이지 새로고침하여 그룹 목록 업데이트
       setTimeout(() => {
         window.location.reload();
       }, 1000);
     } catch (err: any) {
-      setError(err.message || '팀 생성 중 오류가 발생했습니다.');
+      setError(err.message || '그룹 생성 중 오류가 발생했습니다.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className={styles.createTeamForm}>
-      <h2 className={styles.formTitle}>팀 생성</h2>
+    <div className={styles.createGroupForm}>
+      <h2 className={styles.formTitle}>그룹 생성</h2>
       <form onSubmit={handleSubmit}>
         <div className={styles.formGrid}>
           <div className={styles.formGroup}>
-            <label className={styles.label}>팀 이름 *</label>
+            <label className={styles.label}>그룹 이름 *</label>
             <input
               type="text"
               name="name"
               className={styles.input}
               value={formData.name}
               onChange={handleChange}
-              placeholder="팀 이름을 입력하세요"
+              placeholder="그룹 이름을 입력하세요"
               required
             />
-          </div>
-          <div className={styles.formGroup}>
-            <label className={styles.label}>그룹</label>
-            <select
-              name="groupId"
-              className={styles.select}
-              value={formData.groupId}
-              onChange={handleChange}
-            >
-              <option value="">그룹 선택 (선택사항)</option>
-              {loadingGroups ? (
-                <option disabled>로딩 중...</option>
-              ) : (
-                groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))
-              )}
-            </select>
           </div>
           <div className={styles.formGroup}>
             <label className={styles.label}>설명</label>
@@ -141,7 +93,7 @@ export default function CreateTeamForm() {
               className={styles.textarea}
               value={formData.description}
               onChange={handleChange}
-              placeholder="팀에 대한 설명을 입력하세요 (선택사항)"
+              placeholder="그룹에 대한 설명을 입력하세요 (선택사항)"
               rows={3}
             />
           </div>
@@ -156,7 +108,6 @@ export default function CreateTeamForm() {
               setFormData({
                 name: '',
                 description: '',
-                groupId: '',
               });
               setError('');
               setSuccess('');
@@ -169,7 +120,7 @@ export default function CreateTeamForm() {
             className={`${styles.button} ${styles.primary}`}
             disabled={isSubmitting}
           >
-            {isSubmitting ? '생성 중...' : '팀 생성'}
+            {isSubmitting ? '생성 중...' : '그룹 생성'}
           </button>
         </div>
       </form>

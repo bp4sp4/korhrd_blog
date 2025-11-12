@@ -18,7 +18,8 @@ export default async function AdminActivityLogPage() {
     .eq('id', user.id)
     .single();
 
-  if (!profile || (profile.role !== 'super_admin' && profile.role !== 'admin')) {
+  // 활동 로그는 owner만 접근 가능
+  if (!profile || profile.role !== 'owner') {
     redirect('/');
   }
 

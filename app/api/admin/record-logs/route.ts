@@ -12,14 +12,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (!profile || (profile.role !== 'super_admin' && profile.role !== 'admin')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (profileError) {
+      console.error('[record-logs] Profile fetch error:', profileError);
+      return NextResponse.json({ error: 'Failed to fetch user profile' }, { status: 500 });
+    }
+
+    // 활동 로그는 owner만 접근 가능
+    if (!profile || profile.role !== 'owner') {
+      console.warn('[record-logs] Access denied:', {
+        userId: user.id,
+        userEmail: user.email,
+        role: profile?.role,
+      });
+      return NextResponse.json({ error: 'Forbidden: Only owner can access activity logs' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -35,7 +46,17 @@ export async function GET(request: NextRequest) {
       .range(from, to);
 
     if (error) {
+      console.error('[record-logs] Database query error:', error);
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[record-logs] Success:', {
+        logsCount: data?.length ?? 0,
+        totalCount: count ?? 0,
+        page,
+        limit,
+      });
     }
 
     return NextResponse.json({

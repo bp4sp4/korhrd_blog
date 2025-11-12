@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
+export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
     const {
@@ -21,35 +21,36 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (profile?.role !== 'owner' && profile?.role !== 'super_admin') {
-      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can create teams' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden: Only owner or super admin can update groups' }, { status: 403 });
     }
 
-    const { name, description, group_id } = await request.json();
+    const { id, name, description } = await request.json();
 
-    if (!name) {
+    if (!id || !name) {
       return NextResponse.json(
-        { error: 'Team name is required' },
+        { error: 'Group ID and name are required' },
         { status: 400 }
       );
     }
 
-    // Create team using admin client
+    // Update group using admin client
     const adminClient = createAdminClient();
-    const { data: teamData, error: teamError } = await adminClient
-      .from('teams')
-      .insert({
+    const { data: groupData, error: groupError } = await adminClient
+      .from('groups')
+      .update({
         name,
         description: description || null,
-        group_id: group_id || null,
+        updated_at: new Date().toISOString(),
       })
+      .eq('id', id)
       .select()
       .single();
 
-    if (teamError) {
-      return NextResponse.json({ error: teamError.message }, { status: 400 });
+    if (groupError) {
+      return NextResponse.json({ error: groupError.message }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, team: teamData });
+    return NextResponse.json({ success: true, group: groupData });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

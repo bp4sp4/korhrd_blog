@@ -25,13 +25,13 @@ interface AddRecordFormProps {
   currentUserId?: string | null;
   currentUserName?: string | null;
   userRole?: string | null;
+  userTeamId?: string | null;
 }
 
 const getInitialFormData = (author: string) => ({
   id: '',
   field: '사회복지사',
   keyword: '',
-  ranking: '',
   title: '',
   link: '',
   specialNote: '',
@@ -45,9 +45,10 @@ export default function AddRecordForm({
   currentUserId,
   currentUserName,
   userRole = 'member',
+  userTeamId = null,
 }: AddRecordFormProps) {
   const router = useRouter();
-  const canEditAuthor = userRole === 'admin' || userRole === 'super_admin';
+  const canEditAuthor = userRole === 'admin' || userRole === 'super_admin' || userRole === 'owner';
   const defaultAuthor = canEditAuthor ? (currentUserName || '') : (currentUserName || '');
   const [formData, setFormData] = useState(() => getInitialFormData(defaultAuthor));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -149,12 +150,13 @@ export default function AddRecordForm({
         id: formData.id,
         field: formData.field,
         keyword: formData.keyword,
-        ranking: formData.ranking ? parseInt(formData.ranking) : null,
+        ranking: null, // 순위는 자동 조회됨 (1시간마다)
         search_volume: searchVolume,
         title: formData.title,
         link: formData.link || null, // 링크는 선택사항
         author: authorValue || null,
         special_note: formData.specialNote || null,
+        team_id: userTeamId || null, // 사용자의 팀 정보 자동 설정
       });
 
       if (insertError) {
@@ -166,7 +168,7 @@ export default function AddRecordForm({
       }
 
       const metadata = {
-        ranking: formData.ranking ? Number(formData.ranking) : null,
+        ranking: null, // 순위는 자동 조회됨
         searchVolume: searchVolume,
         link: formData.link || null,
         specialNote: formData.specialNote || null,
@@ -298,18 +300,6 @@ export default function AddRecordForm({
               onChange={handleChange}
               placeholder="키워드를 입력하세요"
               required
-            />
-          </div>
-          <div className={styles.formGroup}>
-            <label className={styles.label}>상위노출 순위</label>
-            <input
-              type="number"
-              name="ranking"
-              className={styles.input}
-              value={formData.ranking}
-              onChange={handleChange}
-              placeholder="순위를 입력하세요"
-              min="1"
             />
           </div>
           {(isFetchingSearchVolume || autoSearchVolume !== null) && (
