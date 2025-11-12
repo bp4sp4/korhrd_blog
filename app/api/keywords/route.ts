@@ -55,7 +55,7 @@ export async function GET() {
     if (blogIds.length > 0) {
       const { data: blogData, error: blogError } = await adminClient
         .from('blog_records')
-        .select('id, keyword, title, ranking, link, author')
+        .select('id, keyword, title, ranking, link, author, search_volume')
         .in('id', blogIds);
 
       if (blogError) {
@@ -73,7 +73,7 @@ export async function GET() {
       // 모든 키워드에 대해 일치하는 레코드 찾기 (배치 처리)
       const { data: allBlogData, error: blogError } = await adminClient
         .from('blog_records')
-        .select('id, keyword, title, ranking, link, author')
+        .select('id, keyword, title, ranking, link, author, search_volume')
         .limit(1000); // 충분한 수의 레코드 가져오기
 
       if (blogError) {
@@ -280,6 +280,58 @@ export async function POST(request: NextRequest) {
 
     const errorMessage = error?.message ?? '키워드를 저장하지 못했습니다.';
 
+    return NextResponse.json(
+      { error: errorMessage },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is admin
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile?.is_admin) {
+      return NextResponse.json({ error: 'Forbidden: Only admin can delete keywords' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: '키워드 ID가 필요합니다.' }, { status: 400 });
+    }
+
+    const adminClient = createAdminClient();
+    const { error } = await adminClient
+      .from('keyword_records')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('[keywords] DELETE failed', error);
+      throw error;
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('[keywords] DELETE failed', error);
+    const errorMessage = error?.message ?? '키워드를 삭제하지 못했습니다.';
+    
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

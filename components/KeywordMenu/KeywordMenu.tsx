@@ -17,6 +17,7 @@ type KeywordRecord = {
     ranking: number | null;
     link: string | null;
     author: string | null;
+    search_volume: number | null;
   } | null;
 };
 
@@ -32,7 +33,7 @@ const medalAssets: Record<number, string> = {
   3: '/bronzemedal.png',
 };
 
-export default function KeywordMenu() {
+export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) {
   const [keywords, setKeywords] = useState<KeywordRecord[]>([]);
   const [fetchState, setFetchState] = useState<FetchState>('idle');
   const [error, setError] = useState('');
@@ -42,7 +43,9 @@ export default function KeywordMenu() {
   const [memoInput, setMemoInput] = useState('');
   const [activeTab, setActiveTab] = useState<Category>('사회복지사');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFetchingBlogId, setIsFetchingBlogId] = useState(false);
   const isInitialLoad = useRef(true);
+  const fetchBlogIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const resetMessages = () => {
     setError('');
@@ -76,6 +79,59 @@ export default function KeywordMenu() {
     }
   }, []);
 
+  // 메달 순위가 있는 키워드들의 블로그 ID 자동 업데이트 (조용히 백그라운드에서 실행)
+  const handleAutoUpdateBlogIdsSilent = useCallback(async () => {
+    // 메달 순위가 있고(1-3위), 블로그 ID가 없지만, 매칭된 블로그가 있는 키워드들 찾기
+    const keywordsToUpdate = keywords.filter((item) => {
+      const ranking = item.blog?.ranking ?? null;
+      const hasBlogId = !!(item.blog_id && item.blog_id.trim().length > 0);
+      const hasMatchedBlog = !!(item.blog?.id);
+      
+      return (
+        ranking && ranking >= 1 && ranking <= 3 && // 메달 순위가 있음
+        !hasBlogId && // 블로그 ID가 없음
+        hasMatchedBlog // 매칭된 블로그가 있음
+      );
+    });
+
+    if (keywordsToUpdate.length === 0) {
+      return;
+    }
+
+    try {
+      // 각 키워드를 업데이트하기 위해 POST API 사용
+      const updatePromises = keywordsToUpdate.map((item) =>
+        fetch('/api/keywords', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            keyword: item.keyword,
+            blogId: item.blog?.id || null,
+            memo: item.memo || undefined,
+            category: item.category || undefined,
+          }),
+        })
+      );
+
+      const responses = await Promise.all(updatePromises);
+      const results = await Promise.all(responses.map((r) => r.json()));
+
+      const failed = results.filter((r) => !r.keywords || r.error);
+      if (failed.length > 0) {
+        console.warn(`[keyword-menu] ${failed.length}개의 키워드 업데이트에 실패했습니다.`);
+      }
+
+      // 업데이트가 성공했으면 키워드 목록 새로고침 (조용히)
+      if (failed.length < keywordsToUpdate.length) {
+        await loadKeywords();
+      }
+    } catch (err: any) {
+      console.warn('[keyword-menu] auto update blog IDs failed (silent)', err);
+    }
+  }, [keywords, loadKeywords]);
+
   useEffect(() => {
     void loadKeywords();
   }, [loadKeywords]);
@@ -85,6 +141,69 @@ export default function KeywordMenu() {
     const timer = window.setTimeout(() => setSuccessMessage(''), 2500);
     return () => window.clearTimeout(timer);
   }, [successMessage]);
+
+  // 키워드 목록이 로드된 후 메달 순위가 있는 키워드들의 블로그 ID 자동 업데이트
+  useEffect(() => {
+    if (keywords.length === 0 || fetchState === 'loading') return;
+
+    // 500ms 후에 자동 업데이트 실행 (백그라운드)
+    const timer = setTimeout(() => {
+      void handleAutoUpdateBlogIdsSilent();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [keywords, fetchState, handleAutoUpdateBlogIdsSilent]);
+
+  // 키워드 입력 시 블로그 ID 자동 가져오기
+  useEffect(() => {
+    // 이전 타이머 취소
+    if (fetchBlogIdTimeoutRef.current) {
+      clearTimeout(fetchBlogIdTimeoutRef.current);
+    }
+
+    // 블로그 ID가 이미 입력되어 있으면 자동 가져오기 안 함
+    if (blogIdInput.trim()) {
+      return;
+    }
+
+    // 키워드가 비어있으면 실행 안 함
+    if (!keywordInput.trim()) {
+      return;
+    }
+
+    // 500ms 후에 API 호출 (debounce)
+    fetchBlogIdTimeoutRef.current = setTimeout(async () => {
+      setIsFetchingBlogId(true);
+      try {
+        const response = await fetch(
+          `/api/keywords/find-blog-id?keyword=${encodeURIComponent(keywordInput.trim())}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (response.ok) {
+          const json = await response.json();
+          if (json.blogId) {
+            setBlogIdInput(json.blogId);
+          }
+        }
+      } catch (err) {
+        console.warn('[keyword-menu] Failed to fetch blog ID', err);
+      } finally {
+        setIsFetchingBlogId(false);
+      }
+    }, 500);
+
+    return () => {
+      if (fetchBlogIdTimeoutRef.current) {
+        clearTimeout(fetchBlogIdTimeoutRef.current);
+      }
+    };
+  }, [keywordInput, blogIdInput]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -139,6 +258,98 @@ export default function KeywordMenu() {
     } catch (err: any) {
       console.error('[keyword-menu] submit failed', err);
       setError(err?.message ?? '키워드를 저장하지 못했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteKeyword = async (keywordId: string, keywordText: string) => {
+    if (!window.confirm(`"${keywordText}" 키워드를 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    resetMessages();
+    
+    try {
+      const response = await fetch(`/api/keywords?id=${encodeURIComponent(keywordId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json?.error ?? '키워드를 삭제하지 못했습니다.');
+      }
+
+      setSuccessMessage(`"${keywordText}" 키워드를 삭제했습니다.`);
+      await loadKeywords();
+    } catch (err: any) {
+      console.error('[keyword-menu] delete failed', err);
+      setError(err?.message ?? '키워드를 삭제하지 못했습니다.');
+    }
+  };
+
+  // 메달 순위가 있는 키워드들의 블로그 ID 자동 업데이트 (사용자 버튼 클릭 시)
+  const handleAutoUpdateBlogIds = async () => {
+    resetMessages();
+
+    // 메달 순위가 있고(1-3위), 블로그 ID가 없지만, 매칭된 블로그가 있는 키워드들 찾기
+    const keywordsToUpdate = keywords.filter((item) => {
+      const ranking = item.blog?.ranking ?? null;
+      const hasBlogId = !!(item.blog_id && item.blog_id.trim().length > 0);
+      const hasMatchedBlog = !!(item.blog?.id);
+      
+      return (
+        ranking && ranking >= 1 && ranking <= 3 && // 메달 순위가 있음
+        !hasBlogId && // 블로그 ID가 없음
+        hasMatchedBlog // 매칭된 블로그가 있음
+      );
+    });
+
+    if (keywordsToUpdate.length === 0) {
+      setSuccessMessage('업데이트할 키워드가 없습니다.');
+      return;
+    }
+
+    if (!window.confirm(`${keywordsToUpdate.length}개의 키워드에 블로그 ID를 자동으로 업데이트하시겠습니까?`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // 각 키워드를 업데이트하기 위해 POST API 사용
+      const updatePromises = keywordsToUpdate.map((item) =>
+        fetch('/api/keywords', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            keyword: item.keyword,
+            blogId: item.blog?.id || null,
+            memo: item.memo || undefined,
+            category: item.category || undefined,
+          }),
+        })
+      );
+
+      const responses = await Promise.all(updatePromises);
+      const results = await Promise.all(responses.map((r) => r.json()));
+
+      const failed = results.filter((r) => !r.keywords || r.error);
+      if (failed.length > 0) {
+        throw new Error(`${failed.length}개의 키워드 업데이트에 실패했습니다.`);
+      }
+
+      setSuccessMessage(`${keywordsToUpdate.length}개의 키워드에 블로그 ID를 업데이트했습니다.`);
+      await loadKeywords();
+    } catch (err: any) {
+      console.error('[keyword-menu] auto update blog IDs failed', err);
+      setError(err?.message ?? '블로그 ID 업데이트에 실패했습니다.');
     } finally {
       setIsSubmitting(false);
     }
@@ -205,6 +416,21 @@ export default function KeywordMenu() {
     });
   }, [keywords, activeTab]);
 
+  // 업데이트 가능한 키워드 개수 계산
+  const updatableKeywordsCount = useMemo(() => {
+    return keywords.filter((item) => {
+      const ranking = item.blog?.ranking ?? null;
+      const hasBlogId = !!(item.blog_id && item.blog_id.trim().length > 0);
+      const hasMatchedBlog = !!(item.blog?.id);
+      
+      return (
+        ranking && ranking >= 1 && ranking <= 3 &&
+        !hasBlogId &&
+        hasMatchedBlog
+      );
+    }).length;
+  }, [keywords]);
+
   // 사용 가능한 탭 (키워드가 있는 탭만)
   const availableTabs = useMemo(() => {
     return CATEGORIES.filter((category) => categoryCounts[category] > 0);
@@ -234,6 +460,16 @@ export default function KeywordMenu() {
 
       <div className={styles.actions}>
         <span className={styles.actionsNote}>키워드만 등록해두고 나중에 블로그 ID를 연결해도 괜찮아요.</span>
+        {updatableKeywordsCount > 0 && (
+          <button
+            type="button"
+            onClick={handleAutoUpdateBlogIds}
+            disabled={isSubmitting}
+            className={styles.autoUpdateButton}
+          >
+            {isSubmitting ? '업데이트 중...' : `메달 순위 키워드 블로그 ID 자동 업데이트 (${updatableKeywordsCount}개)`}
+          </button>
+        )}
       </div>
 
       <form className={styles.form} onSubmit={handleSubmit}>
@@ -251,15 +487,30 @@ export default function KeywordMenu() {
         </div>
         <div className={styles.field}>
           <label htmlFor="blogId">블로그 ID (선택)</label>
-          <input
-            id="blogId"
-            className={styles.input}
-            type="text"
-            value={blogIdInput}
-            onChange={(e) => setBlogIdInput(e.target.value)}
-            placeholder="예: windusj"
-            autoComplete="off"
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              id="blogId"
+              className={styles.input}
+              type="text"
+              value={blogIdInput}
+              onChange={(e) => setBlogIdInput(e.target.value)}
+              placeholder={isFetchingBlogId ? '블로그 ID 찾는 중...' : '예: windusj'}
+              autoComplete="off"
+              disabled={isFetchingBlogId}
+            />
+            {isFetchingBlogId && (
+              <span style={{ 
+                position: 'absolute', 
+                right: '12px', 
+                top: '50%', 
+                transform: 'translateY(-50%)',
+                fontSize: '12px',
+                color: '#6b7280'
+              }}>
+                검색 중...
+              </span>
+            )}
+          </div>
         </div>
         <div className={styles.field}>
           <label htmlFor="memo">메모 (선택)</label>
@@ -326,11 +577,13 @@ export default function KeywordMenu() {
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th style={{ width: '35%' }}>키워드</th>
-                      <th style={{ width: '18%' }}>메달</th>
-                      <th style={{ width: '15%' }}>블로그 ID</th>
-                      <th style={{ width: '15%' }}>메모</th>
-                      <th style={{ width: '17%' }}>등록일</th>
+                      <th style={{ width: '30%' }}>키워드</th>
+                      <th style={{ width: '15%' }}>메달</th>
+                      <th style={{ width: '12%' }}>블로그 ID</th>
+                      <th style={{ width: '12%' }}>검색량</th>
+                      <th style={{ width: '12%' }}>메모</th>
+                      <th style={{ width: '14%' }}>등록일</th>
+                      {isAdmin && <th style={{ width: 'auto' }}>작업</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -347,6 +600,7 @@ export default function KeywordMenu() {
                           ? styles.badge
                           : `${styles.badge} ${styles.badgeMuted}`;
                       const memo = item.memo ?? '-';
+                      const searchVolume = item.blog?.search_volume ?? null;
 
                       return (
                         <tr key={item.id}>
@@ -358,8 +612,21 @@ export default function KeywordMenu() {
                             </span>
                           </td>
                           <td>{hasBlog ? item.blog_id : '-'}</td>
+                          <td>{searchVolume !== null ? searchVolume.toLocaleString() : '-'}</td>
                           <td>{memo}</td>
                           <td>{new Date(item.created_at).toLocaleDateString()}</td>
+                          {isAdmin && (
+                            <td>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteKeyword(item.id, item.keyword)}
+                                className={styles.deleteButton}
+                                title="키워드 삭제"
+                              >
+                                삭제
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
