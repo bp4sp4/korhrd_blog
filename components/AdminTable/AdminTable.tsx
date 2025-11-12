@@ -61,6 +61,8 @@ export default function AdminTable({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [refreshingRecords, setRefreshingRecords] = useState<Set<string>>(new Set());
   const [isBulkRefreshing, setIsBulkRefreshing] = useState(false);
+  const [refreshingSearchVolumes, setRefreshingSearchVolumes] = useState<Set<string>>(new Set());
+  const [isBulkRefreshingSearchVolume, setIsBulkRefreshingSearchVolume] = useState(false);
 
   const showTemporarySuccess = (message: string) => {
     setSuccess(message);
@@ -223,25 +225,39 @@ export default function AdminTable({
         updatedEntry && typeof updatedEntry.ranking === 'number'
           ? updatedEntry.ranking
           : null;
+      
+      const updatedSearchVolume =
+        updatedEntry && updatedEntry.searchVolume !== null && updatedEntry.searchVolume !== undefined
+          ? updatedEntry.searchVolume
+          : null;
 
       let rankingLabel = '미노출';
 
-      if (typeof updatedRanking === 'number') {
+      if (typeof updatedRanking === 'number' || updatedSearchVolume !== null) {
         setData((prev) =>
           prev.map((item) =>
             item.id === record.id &&
             normalizeKeywordValue(item.keyword) === normalizeKeywordValue(record.keyword)
               ? {
                   ...item,
-                  ranking: updatedRanking,
+                  ...(typeof updatedRanking === 'number' && { ranking: updatedRanking }),
+                  ...(updatedSearchVolume !== null && { searchVolume: updatedSearchVolume }),
                 }
               : item
           )
         );
 
-        rankingLabel =
-          updatedRanking > 0 && updatedRanking <= 3 ? `${updatedRanking}위` : '미노출';
-        showTemporarySuccess(`${record.keyword} 순위가 ${rankingLabel}로 갱신되었습니다.`);
+        const messages = [];
+        if (typeof updatedRanking === 'number') {
+          rankingLabel =
+            updatedRanking > 0 && updatedRanking <= 3 ? `${updatedRanking}위` : '미노출';
+          messages.push(`순위가 ${rankingLabel}로`);
+        }
+        if (updatedSearchVolume !== null) {
+          messages.push(`검색량이 ${updatedSearchVolume.toLocaleString()}건으로`);
+        }
+        
+        showTemporarySuccess(`${record.keyword} ${messages.join(', ')} 갱신되었습니다.`);
       } else {
         showTemporarySuccess(`${record.keyword}는 스마트블록에서 확인되지 않았습니다 (미노출).`);
       }
@@ -257,6 +273,171 @@ export default function AdminTable({
         next.delete(key);
         return next;
       });
+    }
+  };
+
+  // 검색량만 빠르게 갱신
+  const handleRefreshSearchVolume = async (record: TableData) => {
+    const key = getRecordKey(record);
+    if (refreshingSearchVolumes.has(key)) {
+      return;
+    }
+
+    setRefreshingSearchVolumes((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+
+    setError('');
+
+    try {
+      const params = new URLSearchParams({
+        id: record.id,
+      });
+
+      const response = await fetch(`/api/rankings/update-search-volume?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error('검색량 갱신 요청에 실패했습니다.');
+      }
+
+      const result = await response.json();
+
+      const updatedEntry = Array.isArray(result?.updated)
+        ? result.updated.find(
+            (entry: any) =>
+              entry &&
+              entry.id === record.id &&
+              typeof entry.keyword === 'string' &&
+              normalizeKeywordValue(entry.keyword) === normalizeKeywordValue(record.keyword)
+          )
+        : null;
+
+      const updatedSearchVolume =
+        updatedEntry && updatedEntry.searchVolume !== null && updatedEntry.searchVolume !== undefined
+          ? updatedEntry.searchVolume
+          : null;
+
+      if (updatedSearchVolume !== null) {
+        setData((prev) =>
+          prev.map((item) =>
+            item.id === record.id &&
+            normalizeKeywordValue(item.keyword) === normalizeKeywordValue(record.keyword)
+              ? {
+                  ...item,
+                  searchVolume: updatedSearchVolume,
+                }
+              : item
+          )
+        );
+
+        showTemporarySuccess(`${record.keyword}의 검색량이 ${updatedSearchVolume.toLocaleString()}건으로 갱신되었습니다.`);
+      } else {
+        showTemporarySuccess(`${record.keyword}의 검색량을 가져올 수 없습니다.`);
+      }
+
+      router.refresh();
+    } catch (refreshError: any) {
+      console.error('Failed to refresh search volume', refreshError);
+      setError(refreshError?.message || '검색량 갱신 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
+    } finally {
+      setRefreshingSearchVolumes((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  // 검색량 일괄 갱신
+  const handleRefreshVisibleSearchVolumes = async () => {
+    if (isBulkRefreshingSearchVolume) return;
+
+    const ids = Array.from(
+      new Set(
+        paginatedData
+          .map((item) => item.id?.trim().toLowerCase())
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      )
+    );
+
+    if (ids.length === 0) {
+      setError('현재 페이지에 검색량을 갱신할 아이디가 없습니다.');
+      setShowSuccessMessage(false);
+      return;
+    }
+
+    const confirmMessage =
+      ids.length === 1
+        ? `"${ids[0]}" 아이디의 검색량을 갱신할까요?`
+        : `현재 페이지의 ${ids.length}개 아이디 검색량을 모두 갱신할까요?`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsBulkRefreshingSearchVolume(true);
+    setError('');
+    setShowSuccessMessage(false);
+
+    try {
+      const params = new URLSearchParams();
+      params.set('ids', ids.join(','));
+      params.set('limit', String(Math.min(200, paginatedData.length)));
+
+      const response = await fetch(`/api/rankings/update-search-volume?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || '검색량 갱신 요청에 실패했습니다.');
+      }
+
+      const updates = Array.isArray(result?.updated) ? result.updated : [];
+      const updateMap = new Map<string, any>();
+
+      updates.forEach((entry: any) => {
+        if (!entry || !entry.id || !entry.keyword) return;
+        const key = `${entry.id.toLowerCase()}__${normalizeKeywordValue(entry.keyword)}`;
+        updateMap.set(key, entry);
+      });
+
+      let searchVolumeCount = 0;
+
+      setData((prev) =>
+        prev.map((item) => {
+          const key = `${item.id.toLowerCase()}__${normalizeKeywordValue(item.keyword)}`;
+          const update = updateMap.get(key);
+          if (update && update.searchVolume !== null && update.searchVolume !== undefined) {
+            searchVolumeCount += 1;
+            return {
+              ...item,
+              searchVolume: update.searchVolume,
+            };
+          }
+          return item;
+        })
+      );
+
+      if (searchVolumeCount > 0) {
+        showTemporarySuccess(`현재 페이지에서 ${searchVolumeCount}개 항목의 검색량을 갱신했습니다.`);
+      } else {
+        showTemporarySuccess('현재 페이지에 검색량을 갱신할 항목이 없습니다.');
+      }
+
+      router.refresh();
+    } catch (bulkError: any) {
+      console.error('Failed to refresh visible search volumes', bulkError);
+      setError(bulkError?.message || '검색량 일괄 갱신 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
+    } finally {
+      setIsBulkRefreshingSearchVolume(false);
     }
   };
 
@@ -315,26 +496,40 @@ export default function AdminTable({
       });
 
       let successCount = 0;
+      let searchVolumeCount = 0;
 
       setData((prev) =>
         prev.map((item) => {
           const key = `${item.id.toLowerCase()}__${normalizeKeywordValue(item.keyword)}`;
           const update = updateMap.get(key);
-          if (update && typeof update.ranking === 'number') {
-            successCount += 1;
-            return {
-              ...item,
-              ranking: update.ranking,
-            };
+          if (update) {
+            const updatedItem: any = { ...item };
+            if (typeof update.ranking === 'number') {
+              successCount += 1;
+              updatedItem.ranking = update.ranking;
+            }
+            // 검색량도 업데이트
+            if (update.searchVolume !== null && update.searchVolume !== undefined) {
+              searchVolumeCount += 1;
+              updatedItem.searchVolume = update.searchVolume;
+            }
+            return updatedItem;
           }
           return item;
         })
       );
 
-      if (successCount > 0) {
-        showTemporarySuccess(`현재 페이지에서 ${successCount}개 항목의 순위를 갱신했습니다.`);
+      if (successCount > 0 || searchVolumeCount > 0) {
+        const messages = [];
+        if (successCount > 0) {
+          messages.push(`${successCount}개 항목의 순위`);
+        }
+        if (searchVolumeCount > 0) {
+          messages.push(`${searchVolumeCount}개 항목의 검색량`);
+        }
+        showTemporarySuccess(`현재 페이지에서 ${messages.join('과 ')}를 갱신했습니다.`);
       } else {
-        showTemporarySuccess('현재 페이지에 순위를 갱신할 항목이 없습니다 (미노출).');
+        showTemporarySuccess('현재 페이지에 갱신할 항목이 없습니다 (미노출).');
       }
 
       router.refresh();
@@ -705,19 +900,35 @@ export default function AdminTable({
               총 {filteredData.length}개 결과
             </span>
             <div className={styles.globalRefreshWrapper} onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                className={styles.globalRefreshIconButton}
-                onClick={handleRefreshVisibleRankings}
-                disabled={isBulkRefreshing}
-                aria-label="현재 페이지 순위 일괄 갱신"
-                title={isBulkRefreshing ? '순위 갱신 중...' : '현재 페이지 순위를 한 번에 갱신'}
-              >
-                <RefreshCw
-                  size={18}
-                  className={isBulkRefreshing ? styles.iconSpinning : undefined}
-                />
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className={styles.globalRefreshIconButton}
+                  onClick={handleRefreshVisibleRankings}
+                  disabled={isBulkRefreshing}
+                  aria-label="현재 페이지 순위 일괄 갱신"
+                  title={isBulkRefreshing ? '순위 갱신 중...' : '현재 페이지 순위를 한 번에 갱신'}
+                >
+                  <RefreshCw
+                    size={18}
+                    className={isBulkRefreshing ? styles.iconSpinning : undefined}
+                  />
+                </button>
+                <button
+                  type="button"
+                  className={styles.globalRefreshIconButton}
+                  onClick={handleRefreshVisibleSearchVolumes}
+                  disabled={isBulkRefreshingSearchVolume}
+                  aria-label="현재 페이지 검색량 일괄 갱신"
+                  title={isBulkRefreshingSearchVolume ? '검색량 갱신 중...' : '현재 페이지 검색량을 한 번에 갱신'}
+                  style={{ color: '#0369a1' }}
+                >
+                  <RefreshCw
+                    size={18}
+                    className={isBulkRefreshingSearchVolume ? styles.iconSpinning : undefined}
+                  />
+                </button>
+              </div>
             </div>
             {isFilterOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </div>
@@ -918,13 +1129,24 @@ export default function AdminTable({
                         </div>
                       </td>
                       <td>
-                        <button
-                          className={styles.refreshButton}
-                          onClick={() => handleRefreshRanking(item)}
-                          disabled={!canModify || isSubmitting || isRefreshing}
-                        >
-                          {isRefreshing ? '갱신 중...' : '새로고침'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px', flexDirection: 'column' }}>
+                          <button
+                            className={styles.refreshButton}
+                            onClick={() => handleRefreshRanking(item)}
+                            disabled={!canModify || isSubmitting || refreshingRecords.has(getRecordKey(item))}
+                            style={{ fontSize: '12px', padding: '4px 8px' }}
+                          >
+                            {refreshingRecords.has(getRecordKey(item)) ? '갱신 중...' : '랭킹'}
+                          </button>
+                          <button
+                            className={styles.refreshButton}
+                            onClick={() => handleRefreshSearchVolume(item)}
+                            disabled={!canModify || isSubmitting || refreshingSearchVolumes.has(getRecordKey(item))}
+                            style={{ fontSize: '12px', padding: '4px 8px', backgroundColor: '#f0f9ff', color: '#0369a1' }}
+                          >
+                            {refreshingSearchVolumes.has(getRecordKey(item)) ? '조회 중...' : '검색량'}
+                          </button>
+                        </div>
                       </td>
                       <td>{item.searchVolume.toLocaleString()}</td>
                       <td>{item.title}</td>

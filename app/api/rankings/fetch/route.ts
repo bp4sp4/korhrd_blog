@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { fetchNaverRanking } from '@/lib/naver/ranking';
+import { fetchNaverRanking, fetchNaverSearchCountFromKeywordTool } from '@/lib/naver/ranking';
 import { NextRequest, NextResponse } from 'next/server';
 
 type BlogRecord = {
@@ -244,6 +244,7 @@ export async function GET(request: NextRequest) {
 
     for (const record of records) {
       try {
+        // 1. 랭킹 가져오기
         const entries = await fetchSmartblockEntries(record.keyword, request);
         const matched = entries.find(
           (entry) =>
@@ -253,12 +254,39 @@ export async function GET(request: NextRequest) {
 
         const rank = matched ? matched.rank : null;
 
+        // 2. 검색량 가져오기
+        let searchVolume: number | null = null;
+        try {
+          const searchCountResult = await fetchNaverSearchCountFromKeywordTool(record.keyword);
+          if (searchCountResult.total !== null && searchCountResult.total > 0) {
+            searchVolume = searchCountResult.total;
+            console.log(`[ranking] 검색량 수집 성공: ${record.keyword} = ${searchVolume}`);
+          } else {
+            console.log(`[ranking] 검색량 수집 실패 또는 0: ${record.keyword}`);
+          }
+        } catch (searchVolumeError: any) {
+          console.warn(`[ranking] 검색량 수집 실패: ${record.keyword}`, searchVolumeError?.message);
+          // 검색량 수집 실패해도 랭킹은 업데이트
+        }
+
+        // 3. 데이터베이스 업데이트
+        const updateData: {
+          ranking: number | null;
+          search_volume?: number | null;
+          updated_at: string;
+        } = {
+          ranking: rank,
+          updated_at: new Date().toISOString(),
+        };
+
+        // 검색량이 있으면 업데이트에 포함
+        if (searchVolume !== null) {
+          updateData.search_volume = searchVolume;
+        }
+
         const { error } = await adminClient
           .from('blog_records')
-          .update({
-            ranking: rank,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', record.id)
           .eq('keyword', record.keyword);
 
@@ -272,6 +300,7 @@ export async function GET(request: NextRequest) {
             actor_role: 'system',
             metadata: {
               ranking: rank,
+              searchVolume: searchVolume,
               link: matched?.link ?? null,
               nickname: matched?.nickname ?? null,
               fetchedAt: new Date().toISOString(),
@@ -283,6 +312,7 @@ export async function GET(request: NextRequest) {
           id: record.id,
           keyword: record.keyword,
           ranking: rank,
+          searchVolume: searchVolume,
           nickname: matched?.nickname ?? null,
           link: matched?.link ?? null,
           success: !error,
@@ -294,12 +324,14 @@ export async function GET(request: NextRequest) {
           id: record.id,
           keyword: record.keyword,
           ranking: null,
+          searchVolume: null,
           success: false,
           error: err?.message ?? '스마트블록 조회 실패',
         });
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      // API 호출 간격 조절 (랭킹 + 검색량)
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     console.log('[ranking] debug', {

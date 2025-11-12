@@ -32,7 +32,6 @@ const getInitialFormData = (author: string) => ({
   field: '사회복지사',
   keyword: '',
   ranking: '',
-  searchVolume: '',
   title: '',
   link: '',
   specialNote: '',
@@ -54,6 +53,8 @@ export default function AddRecordForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isFetchingSearchVolume, setIsFetchingSearchVolume] = useState(false);
+  const [autoSearchVolume, setAutoSearchVolume] = useState<number | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -61,6 +62,47 @@ export default function AddRecordForm({
     setError('');
     setSuccess('');
   };
+
+  // 키워드가 변경되면 검색량 자동 가져오기 (입력과 동시에)
+  useEffect(() => {
+    const keyword = formData.keyword.trim();
+    if (!keyword || keyword.length < 2) {
+      setIsFetchingSearchVolume(false);
+      setAutoSearchVolume(null);
+      return;
+    }
+
+    // 디바운싱: 300ms 후에 검색량 가져오기 (더 빠르게)
+    const timeoutId = setTimeout(async () => {
+      setIsFetchingSearchVolume(true);
+      try {
+        const response = await fetch('/api/keywords/test-search-count', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ keyword }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.search_count?.total && data.search_count.total > 0) {
+            setAutoSearchVolume(data.search_count.total);
+          } else {
+            setAutoSearchVolume(null);
+          }
+        } else {
+          setAutoSearchVolume(null);
+        }
+      } catch (err) {
+        console.warn('검색량 자동 가져오기 실패:', err);
+      } finally {
+        setIsFetchingSearchVolume(false);
+      }
+    }, 300); // 1초에서 300ms로 단축
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.keyword]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,13 +119,38 @@ export default function AddRecordForm({
     setIsSubmitting(true);
 
     try {
+      // 키워드로 검색량 가져오기 (이미 가져온 값이 있으면 사용, 없으면 새로 가져오기)
+      let searchVolume: number | null = autoSearchVolume;
+      
+      if (searchVolume === null) {
+        try {
+          const searchResponse = await fetch('/api/keywords/test-search-count', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ keyword: formData.keyword }),
+          });
+
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            if (searchData.search_count?.total && searchData.search_count.total > 0) {
+              searchVolume = searchData.search_count.total;
+            }
+          }
+        } catch (searchErr) {
+          console.warn('검색량 가져오기 실패:', searchErr);
+          // 검색량 가져오기 실패해도 기록은 저장
+        }
+      }
+
       const supabase = createClient();
       const { error: insertError } = await supabase.from('blog_records').insert({
         id: formData.id,
         field: formData.field,
         keyword: formData.keyword,
         ranking: formData.ranking ? parseInt(formData.ranking) : null,
-        search_volume: formData.searchVolume ? parseInt(formData.searchVolume) : null,
+        search_volume: searchVolume,
         title: formData.title,
         link: formData.link || null, // 링크는 선택사항
         author: authorValue || null,
@@ -100,7 +167,7 @@ export default function AddRecordForm({
 
       const metadata = {
         ranking: formData.ranking ? Number(formData.ranking) : null,
-        searchVolume: formData.searchVolume ? Number(formData.searchVolume) : null,
+        searchVolume: searchVolume,
         link: formData.link || null,
         specialNote: formData.specialNote || null,
       };
@@ -127,6 +194,8 @@ export default function AddRecordForm({
 
       setSuccess('기록이 성공적으로 추가되었습니다.');
       setFormData(getInitialFormData(canEditAuthor ? '' : authorValue));
+      setAutoSearchVolume(null);
+      setIsFetchingSearchVolume(false);
 
       router.refresh();
       
@@ -170,6 +239,8 @@ export default function AddRecordForm({
     setFormData(getInitialFormData(canEditAuthor ? '' : (currentUserName || '')));
     setError('');
     setSuccess('');
+    setAutoSearchVolume(null);
+    setIsFetchingSearchVolume(false);
     if (onClose) {
       onClose();
     }
@@ -241,18 +312,14 @@ export default function AddRecordForm({
               min="1"
             />
           </div>
-          <div className={styles.formGroup}>
-            <label className={styles.label}>검색량</label>
-            <input
-              type="number"
-              name="searchVolume"
-              className={styles.input}
-              value={formData.searchVolume}
-              onChange={handleChange}
-              placeholder="검색량을 입력하세요"
-              min="0"
-            />
-          </div>
+          {(isFetchingSearchVolume || autoSearchVolume !== null) && (
+            <div className={styles.formGroup}>
+              <label className={styles.label}>검색량</label>
+              <div className={styles.input} style={{ color: '#6b7280', fontStyle: 'italic' }}>
+                {isFetchingSearchVolume ? '검색량 조회 중...' : autoSearchVolume !== null ? `${autoSearchVolume.toLocaleString()}건 (자동 조회)` : '검색량 없음'}
+              </div>
+            </div>
+          )}
           <div className={styles.formGroup}>
             <label className={styles.label}>제목 *</label>
             <input
@@ -320,6 +387,8 @@ export default function AddRecordForm({
               setFormData(getInitialFormData(canEditAuthor ? '' : (currentUserName || '')));
               setError('');
               setSuccess('');
+              setAutoSearchVolume(null);
+              setIsFetchingSearchVolume(false);
             }}
           >
             초기화

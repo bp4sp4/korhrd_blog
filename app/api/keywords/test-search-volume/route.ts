@@ -86,11 +86,14 @@ export async function POST(request: NextRequest) {
         total_combined_ratio: searchVolumeResult.totalCombinedRatio,
         pc_total_ratio: searchVolumeResult.pcTotalRatio,
         mobile_total_ratio: searchVolumeResult.mobileTotalRatio,
+        actual_search_count: searchVolumeResult.actualSearchCount,
+        pc_search_count: searchVolumeResult.pcSearchCount,
+        mobile_search_count: searchVolumeResult.mobileSearchCount,
       },
       duration_ms: duration,
       timestamp: new Date().toISOString(),
       message: searchVolumeResult.ratio !== null 
-        ? `한 달 동안 검색량 수집 성공 (평균: ${searchVolumeResult.ratio}, PC 총합: ${searchVolumeResult.pcTotalRatio}, Mobile 총합: ${searchVolumeResult.mobileTotalRatio}, 전체 총합: ${searchVolumeResult.totalCombinedRatio})` 
+        ? `한 달 동안 검색량 수집 성공 (평균: ${searchVolumeResult.ratio}, PC 총합: ${searchVolumeResult.pcTotalRatio}, Mobile 총합: ${searchVolumeResult.mobileTotalRatio}, 전체 총합: ${searchVolumeResult.totalCombinedRatio}${searchVolumeResult.actualSearchCount ? `, 실제 검색 횟수: ${searchVolumeResult.actualSearchCount.toLocaleString()}회` : ''})` 
         : '검색량을 찾을 수 없습니다. 네이버 데이터랩 API 응답을 확인해주세요.',
       // 개발 환경에서만 원본 데이터 포함
       ...(process.env.NODE_ENV === 'development' && searchVolumeResult.rawData ? { raw_data: searchVolumeResult.rawData } : {}),
@@ -168,11 +171,14 @@ export async function GET(request: NextRequest) {
         total_combined_ratio: searchVolumeResult.totalCombinedRatio,
         pc_total_ratio: searchVolumeResult.pcTotalRatio,
         mobile_total_ratio: searchVolumeResult.mobileTotalRatio,
+        actual_search_count: searchVolumeResult.actualSearchCount,
+        pc_search_count: searchVolumeResult.pcSearchCount,
+        mobile_search_count: searchVolumeResult.mobileSearchCount,
       },
       duration_ms: duration,
       timestamp: new Date().toISOString(),
       message: searchVolumeResult.ratio !== null 
-        ? `한 달 동안 검색량 수집 성공 (평균: ${searchVolumeResult.ratio}, PC 총합: ${searchVolumeResult.pcTotalRatio}, Mobile 총합: ${searchVolumeResult.mobileTotalRatio}, 전체 총합: ${searchVolumeResult.totalCombinedRatio})` 
+        ? `한 달 동안 검색량 수집 성공 (평균: ${searchVolumeResult.ratio}, PC 총합: ${searchVolumeResult.pcTotalRatio}, Mobile 총합: ${searchVolumeResult.mobileTotalRatio}, 전체 총합: ${searchVolumeResult.totalCombinedRatio}${searchVolumeResult.actualSearchCount ? `, 실제 검색 횟수: ${searchVolumeResult.actualSearchCount.toLocaleString()}회` : ''})` 
         : '검색량을 찾을 수 없습니다. 네이버 데이터랩 API 응답을 확인해주세요.',
       // 개발 환경에서만 원본 데이터 포함
       ...(process.env.NODE_ENV === 'development' && searchVolumeResult.rawData ? { raw_data: searchVolumeResult.rawData } : {}),
