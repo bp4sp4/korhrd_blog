@@ -285,9 +285,11 @@ export default function MorphemePage() {
         // 폭력 및 불법 행위
         '자살', '자해', '살인', '강간', '성추행', '성폭행',
         // 마약 관련
-        '마약', '대마', '대마초',
+        '마약', '대마', '대마초', '클럽',
         // 성인 콘텐츠
-        '성인', '성인용품', '성인 용품', '야동', '포르노', 'AV', '섹스', '성관계', '음란',
+        '성인', '성인용품', '성인 용품', '야동', '포르노', 'AV', '섹스', '성관계', '음란', '야해', '야 해', '전라', '나체', '섹시', '성행위', '성교', '성생활',
+        // 성적 비속어
+        '자위', '보지', '자지', '엉덩이', '고자', '똥꼬', '애널', '고환', '꼬추', '사까시', '애무',
         // 욕설 및 비속어
         '개새끼', '시발', '병신', '욕설',
         // 기타
@@ -333,13 +335,16 @@ export default function MorphemePage() {
     '자살', '자해', '살인', '강간', '성추행', '성폭행',
     
     // 마약 관련
-    '마약', '대마', '대마초',
+    '마약', '대마', '대마초', '클럽',
     
     // 성인 콘텐츠
-    '성인', '야동', '포르노', 'AV', '섹스', '성관계', '음란',
+    '성인', '야동', '포르노', 'AV', '섹스', '성관계', '음란', '야해', '야 해', '전라', '나체', '섹시', '성행위', '성교', '성생활',
+    
+    // 성적 비속어
+    '자위', '보지', '자지', '엉덩이', '고자', '똥꼬', '애널', '고환', '꼬추', '사까시', '애무',
     
     // 욕설 및 비속어
-    '개새끼', '시발', '병신', '욕설', '고자'
+    '개새끼', '시발', '병신', '욕설'
 
   ];
 
@@ -368,16 +373,29 @@ export default function MorphemePage() {
     // 1. 금칙어 위치 기록
     forbiddenKeywords.forEach(keyword => {
       const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // 한국어는 단어 경계가 명확하지 않으므로 직접 매칭
-      const regex = new RegExp(escapedKeyword, 'gi');
+      
+      // "야해"와 "야 해"는 특별 처리: 앞에 한글이 붙어있지 않을 때만 감지 (예: "해야해", "되야해" 제외)
+      let regex: RegExp;
+      if (keyword === '야해' || keyword === '야 해') {
+        // "야해" 또는 "야 해" 앞에 한글이 없고, 문장 시작이거나 공백/문장부호 뒤에 오는 경우만 매칭
+        regex = new RegExp(`(^|[^가-힣])${escapedKeyword}`, 'gi');
+      } else {
+        // 다른 키워드는 기존처럼 직접 매칭
+        regex = new RegExp(escapedKeyword, 'gi');
+      }
+      
       let match;
       const regexCopy = new RegExp(regex.source, regex.flags); // regex 재사용을 위한 복사
       while ((match = regexCopy.exec(text)) !== null) {
+        // "야해" 또는 "야 해"의 경우 앞의 캡처 그룹을 제외한 실제 매칭 위치 계산
+        const actualStart = (keyword === '야해' || keyword === '야 해') ? match.index + (match[1]?.length || 0) : match.index;
+        const actualEnd = actualStart + keyword.length;
+        
         highlights.push({
-          start: match.index,
-          end: match.index + match[0].length,
+          start: actualStart,
+          end: actualEnd,
           type: 'forbidden',
-          text: match[0]
+          text: keyword
         });
       }
     });

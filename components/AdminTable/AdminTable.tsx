@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { ChevronDown, ChevronUp, Filter, RefreshCw } from 'lucide-react';
@@ -39,6 +39,19 @@ export default function AdminTable({
 }: AdminTableProps) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
+  
+  // 디버깅: 초기 데이터에 created_at이 있는지 확인
+  useEffect(() => {
+    if (initialData.length > 0) {
+      const sample = initialData[0];
+      console.log('[AdminTable] Sample record:', {
+        id: sample.id,
+        keyword: sample.keyword,
+        hasCreatedAt: !!sample.created_at,
+        created_at: sample.created_at,
+      });
+    }
+  }, [initialData]);
   const [filters, setFilters] = useState({
     id: '',
     field: '전체',
@@ -1084,6 +1097,7 @@ export default function AdminTable({
                 <th>링크</th>
                 <th>작성자</th>
                 <th>특이사항</th>
+                <th>등록일</th>
               </tr>
             </thead>
             <tbody className={styles.tableBody}>
@@ -1166,12 +1180,21 @@ export default function AdminTable({
                       </td>
                       <td>{item.author}</td>
                       <td>{item.specialNote || '-'}</td>
+                      <td>
+                        {item.created_at
+                          ? new Date(item.created_at).toLocaleDateString('ko-KR', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                            })
+                          : '-'}
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={12} className={styles.emptyState}>
+                  <td colSpan={13} className={styles.emptyState}>
                     <p>검색 결과가 없습니다.</p>
                   </td>
                 </tr>

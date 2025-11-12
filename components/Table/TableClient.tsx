@@ -53,6 +53,19 @@ export default function TableClient({
   userTeamId = null,
 }: TableClientProps) {
   const router = useRouter();
+  
+  // 디버깅: 데이터에 created_at이 있는지 확인
+  useEffect(() => {
+    if (data.length > 0) {
+      const sample = data[0];
+      console.log('[TableClient] Sample record:', {
+        id: sample.id,
+        keyword: sample.keyword,
+        hasCreatedAt: !!sample.created_at,
+        created_at: sample.created_at,
+      });
+    }
+  }, [data]);
 
   const [filters, setFilters] = useState({
     id: '',
@@ -692,6 +705,7 @@ export default function TableClient({
                 <th>제목</th>
                 <th>링크</th>
                 <th>작성자</th>
+                <th>등록일</th>
                 <th>특이사항</th>
               </tr>
             </thead>
@@ -751,13 +765,22 @@ export default function TableClient({
                         </a>
                       </td>
                       <td>{item.author}</td>
+                      <td>
+                        {item.created_at
+                          ? new Date(item.created_at).toLocaleDateString('ko-KR', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                            })
+                          : '등록일 없음'}
+                      </td>
                       <td>{item.specialNote || '-'}</td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={10} className={styles.emptyState}>
+                  <td colSpan={11} className={styles.emptyState}>
                     <p>검색 결과가 없습니다.</p>
                   </td>
                 </tr>

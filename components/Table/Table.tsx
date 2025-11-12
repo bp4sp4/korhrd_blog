@@ -14,6 +14,7 @@ export interface TableData {
   author: string;
   specialNote?: string;
   teamId?: string | null;
+  created_at?: string;
 }
 
 interface TableProps {

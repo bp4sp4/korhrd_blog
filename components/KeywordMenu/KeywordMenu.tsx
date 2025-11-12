@@ -18,6 +18,7 @@ type KeywordRecord = {
     link: string | null;
     author: string | null;
     search_volume: number | null;
+    created_at?: string | null;
   } | null;
 };
 
@@ -577,12 +578,11 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th style={{ width: '23%' }}>키워드</th>
-                      <th style={{ width: '15%' }}>메달</th>
-                      <th style={{ width: '12%' }}>블로그 ID</th>
-                      <th style={{ width: '12%' }}>검색량</th>
-                      <th style={{ width: '12%' }}>메모</th>
-                      <th style={{ width: '14%' }}>등록일</th>
+                      <th style={{ width: '25%' }}>키워드</th>
+                      <th style={{ width: '18%' }}>메달</th>
+                      <th style={{ width: '15%' }}>블로그 ID</th>
+                      <th style={{ width: '15%' }}>검색량</th>
+                      <th style={{ width: '17%' }}>등록일</th>
                       {isAdmin && <th style={{ width: 'auto' }}>작업</th>}
                     </tr>
                   </thead>
@@ -599,7 +599,6 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
                         ranking && ranking > 0 && ranking <= 3
                           ? styles.badge
                           : `${styles.badge} ${styles.badgeMuted}`;
-                      const memo = item.memo ?? '-';
                       const searchVolume = item.blog?.search_volume ?? null;
 
                       return (
@@ -613,8 +612,11 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
                           </td>
                           <td>{hasBlog ? item.blog_id : '-'}</td>
                           <td>{searchVolume !== null ? searchVolume.toLocaleString() : '-'}</td>
-                          <td>{memo}</td>
-                          <td>{new Date(item.created_at).toLocaleDateString()}</td>
+                          <td>
+                            {new Date(
+                              item.blog?.created_at || item.created_at
+                            ).toLocaleDateString('ko-KR')}
+                          </td>
                           {isAdmin && (
                             <td>
                               <button

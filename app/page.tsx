@@ -187,6 +187,7 @@ export default async function Home() {
       author: record.author || '',
       specialNote: record.special_note || '',
       teamId: record.team_id || null,
+      created_at: record.created_at ? String(record.created_at) : undefined,
     }));
 
   const email = user.email || null;

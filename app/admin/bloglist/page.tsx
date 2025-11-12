@@ -140,6 +140,7 @@ async function getRecords(userTeamId: string | null, userRole: string | null): P
     author: record.author || '',
     specialNote: record.special_note || '',
     teamId: record.team_id || null,
+    created_at: record.created_at ? String(record.created_at) : undefined,
   }));
 }
 

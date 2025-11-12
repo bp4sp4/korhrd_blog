@@ -48,23 +48,25 @@ export async function GET() {
       )
     );
 
-    let blogRecordsById: Record<string, any> = {};
+    let blogRecordsByIdAndKeyword: Record<string, any> = {};
     let blogRecordsByKeyword: Record<string, any> = {};
 
-    // blog_id로 매칭
+    // blog_id로 매칭 (같은 id에 여러 레코드가 있을 수 있으므로 키워드도 함께 고려)
     if (blogIds.length > 0) {
       const { data: blogData, error: blogError } = await adminClient
         .from('blog_records')
-        .select('id, keyword, title, ranking, link, author, search_volume')
+        .select('id, keyword, title, ranking, link, author, search_volume, created_at')
         .in('id', blogIds);
 
       if (blogError) {
         console.error('[keywords] Failed to load related blog records by id', blogError);
       } else if (blogData) {
-        blogRecordsById = blogData.reduce<Record<string, any>>((acc, record) => {
-          acc[record.id] = record;
-          return acc;
-        }, {});
+        // blog_id와 keyword 조합으로 맵 생성
+        blogData.forEach((record) => {
+          const normalizedKeyword = record.keyword?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
+          const key = `${record.id}::${normalizedKeyword}`;
+          blogRecordsByIdAndKeyword[key] = record;
+        });
       }
     }
 
@@ -73,7 +75,7 @@ export async function GET() {
       // 모든 키워드에 대해 일치하는 레코드 찾기 (배치 처리)
       const { data: allBlogData, error: blogError } = await adminClient
         .from('blog_records')
-        .select('id, keyword, title, ranking, link, author, search_volume')
+        .select('id, keyword, title, ranking, link, author, search_volume, created_at')
         .limit(1000); // 충분한 수의 레코드 가져오기
 
       if (blogError) {
@@ -98,10 +100,14 @@ export async function GET() {
     const merged = items.map((item) => {
       const normalizedKeyword = item.keyword.trim().toLowerCase().replace(/\s+/g, ' ');
       
-      // 1순위: blog_id로 매칭된 레코드
-      let matchedBlog = item.blog_id ? blogRecordsById[item.blog_id] : null;
+      // 1순위: blog_id와 keyword 조합으로 정확히 매칭된 레코드
+      let matchedBlog = null;
+      if (item.blog_id) {
+        const key = `${item.blog_id}::${normalizedKeyword}`;
+        matchedBlog = blogRecordsByIdAndKeyword[key] || null;
+      }
       
-      // 2순위: 키워드로 매칭된 레코드 (blog_id 매칭이 없거나 ranking이 없는 경우)
+      // 2순위: 키워드로 매칭된 레코드 (blog_id+keyword 매칭이 없거나 ranking이 없는 경우)
       if (!matchedBlog || !matchedBlog.ranking) {
         const keywordMatched = blogRecordsByKeyword[normalizedKeyword];
         if (keywordMatched) {
