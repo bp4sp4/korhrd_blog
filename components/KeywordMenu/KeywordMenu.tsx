@@ -176,61 +176,84 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       return;
     }
 
-    // 한 번에 최대 10개씩 처리 (API 호출 제한 고려)
-    const batchSize = 10;
+    // 한 번에 최대 8개씩 병렬 처리 (빠르고 확실하게)
+    const batchSize = 8;
     const batches: KeywordRecord[][] = [];
     for (let i = 0; i < keywordsNeedingVolume.length; i += batchSize) {
       batches.push(keywordsNeedingVolume.slice(i, i + batchSize));
     }
 
-    // 각 배치를 순차적으로 처리
-    for (const batch of batches) {
-      const promises = batch.map(async (item) => {
+    // 각 배치를 병렬 처리하여 빠르게 가져오기
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      
+      // 배치 내에서 병렬 처리 (재시도 로직 포함)
+      const promises = batch.map(async (item, retryCount = 0) => {
+        const maxRetries = 2;
         setFetchingSearchVolumes((prev) => new Set(prev).add(item.keyword));
-        try {
-          const response = await fetch('/api/keywords/test-search-volume', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ keyword: item.keyword }),
-          });
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            const response = await fetch('/api/keywords/test-search-volume', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ keyword: item.keyword }),
+            });
 
-          if (response.ok) {
-            const data = await response.json();
-            const searchVolume = data.search_volume?.actual_search_count ?? 
-                                data.search_volume?.total_combined_ratio ?? 
-                                null;
-            setSearchVolumes((prev) => ({
-              ...prev,
-              [item.keyword]: searchVolume,
-            }));
-          } else {
-            setSearchVolumes((prev) => ({
-              ...prev,
-              [item.keyword]: null,
-            }));
+            if (response.ok) {
+              const data = await response.json();
+              const searchVolume = data.search_volume?.actual_search_count ?? 
+                                  data.search_volume?.total_combined_ratio ?? 
+                                  null;
+              setSearchVolumes((prev) => ({
+                ...prev,
+                [item.keyword]: searchVolume,
+              }));
+              return; // 성공하면 종료
+            } else if (attempt < maxRetries) {
+              // 실패 시 재시도 (짧은 딜레이 후)
+              await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+              continue;
+            } else {
+              // 최종 실패
+              setSearchVolumes((prev) => ({
+                ...prev,
+                [item.keyword]: null,
+              }));
+            }
+          } catch (err) {
+            if (attempt < maxRetries) {
+              // 에러 시 재시도
+              await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+              continue;
+            } else {
+              console.warn(`[keyword-menu] Failed to fetch search volume for ${item.keyword} after ${maxRetries + 1} attempts`, err);
+              setSearchVolumes((prev) => ({
+                ...prev,
+                [item.keyword]: null,
+              }));
+            }
           }
-        } catch (err) {
-          console.warn(`[keyword-menu] Failed to fetch search volume for ${item.keyword}`, err);
-          setSearchVolumes((prev) => ({
-            ...prev,
-            [item.keyword]: null,
-          }));
-        } finally {
-          setFetchingSearchVolumes((prev) => {
-            const next = new Set(prev);
-            next.delete(item.keyword);
-            return next;
-          });
         }
       });
 
       await Promise.all(promises);
-      // 배치 간 딜레이 (API 호출 제한 고려)
-      if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // 배치 간 짧은 딜레이 (API 호출 제한 방지)
+      if (batchIndex < batches.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
+      
+      // 모든 요청 완료 후 fetching 상태 정리
+      batch.forEach((item) => {
+        setFetchingSearchVolumes((prev) => {
+          const next = new Set(prev);
+          next.delete(item.keyword);
+          return next;
+        });
+      });
     }
   }, [searchVolumes, fetchingSearchVolumes]);
 
