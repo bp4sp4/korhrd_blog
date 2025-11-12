@@ -315,7 +315,7 @@ export default function AddRecordForm({
           {(isFetchingSearchVolume || autoSearchVolume !== null) && (
             <div className={styles.formGroup}>
               <label className={styles.label}>검색량</label>
-              <div className={styles.input} style={{ color: '#6b7280', fontStyle: 'italic' }}>
+              <div className={styles.input}>
                 {isFetchingSearchVolume ? '검색량 조회 중...' : autoSearchVolume !== null ? `${autoSearchVolume.toLocaleString()}건 (자동 조회)` : '검색량 없음'}
               </div>
             </div>
