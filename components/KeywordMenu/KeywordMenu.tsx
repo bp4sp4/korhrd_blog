@@ -47,8 +47,10 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
   const [isFetchingBlogId, setIsFetchingBlogId] = useState(false);
   const [searchVolumes, setSearchVolumes] = useState<Record<string, number | null>>({});
   const [fetchingSearchVolumes, setFetchingSearchVolumes] = useState<Set<string>>(new Set());
+  const [searchVolumeProgress, setSearchVolumeProgress] = useState<{ total: number; completed: number; isRetrying?: boolean; retryCount?: number; retryTotal?: number } | null>(null);
   const isInitialLoad = useRef(true);
   const fetchBlogIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchedKeywordsRef = useRef<Set<string>>(new Set());
 
   const resetMessages = () => {
     setError('');
@@ -157,107 +159,231 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
     return () => clearTimeout(timer);
   }, [keywords, fetchState, handleAutoUpdateBlogIdsSilent]);
 
+  // 재시도 횟수별 딜레이를 계산하는 함수
+  const getRetryDelay = (attempt: number) => {
+    // 1차: 200ms, 2차: 400ms, 3차: 800ms
+    return Math.pow(2, attempt) * 200;
+  };
+
   // 검색량이 없는 키워드들의 검색량 자동 가져오기 (DB 저장 없이 클라이언트 상태만 사용)
   const fetchSearchVolumesForKeywords = useCallback(async (keywordsToFetch: KeywordRecord[], forceRefresh = false) => {
-    // forceRefresh가 false인 경우: 이미 가져온 키워드나 가져오는 중인 키워드는 제외
-    // forceRefresh가 true인 경우: 가져오는 중인 키워드만 제외 (모든 키워드 새로고침)
-    // DB에 저장하지 않으므로 클라이언트 상태만 확인
+    // 키워드 목록이 비어있으면 종료
+    if (keywordsToFetch.length === 0) {
+      return;
+    }
+
+    // 중복 조회 방지를 위해 현재 클라이언트 상태와 비교하여 최종 조회 대상 필터링
     const keywordsNeedingVolume = keywordsToFetch.filter((item) => {
       const isFetching = fetchingSearchVolumes.has(item.keyword);
+      if (isFetching) return false;
+      
+      // 강제 새로고침 모드면 모두 가져오기
       if (forceRefresh) {
-        return !isFetching; // 새로고침 모드: 가져오는 중인 것만 제외
+        return true;
       }
-      // 클라이언트 상태에 이미 있으면 제외 (한번 가져온 값 유지)
-      const isAlreadyFetched = searchVolumes[item.keyword] !== undefined;
-      return !isAlreadyFetched && !isFetching;
+      
+      // 클라이언트 상태에 검색량이 있고 null이 아닌 경우만 제외
+      // null이거나 undefined인 경우는 다시 가져오기 시도
+      const hasValidClientVolume = searchVolumes[item.keyword] !== undefined && searchVolumes[item.keyword] !== null;
+      if (hasValidClientVolume) {
+        return false;
+      }
+      
+      return true;
     });
 
     if (keywordsNeedingVolume.length === 0) {
       return;
     }
 
-    // 한 번에 최대 8개씩 병렬 처리 (빠르고 확실하게)
+    // 프로그레스 바 초기화
+    setSearchVolumeProgress({ total: keywordsNeedingVolume.length, completed: 0 });
+
+    // 조회 시작 키워드를 `fetchingSearchVolumes`에 추가
+    const newFetching = new Set(keywordsNeedingVolume.map(item => item.keyword));
+    setFetchingSearchVolumes(prev => new Set([...prev, ...newFetching]));
+
+    // 한 번에 최대 8개씩 병렬 처리
     const batchSize = 8;
     const batches: KeywordRecord[][] = [];
     for (let i = 0; i < keywordsNeedingVolume.length; i += batchSize) {
       batches.push(keywordsNeedingVolume.slice(i, i + batchSize));
     }
 
-    // 각 배치를 병렬 처리하여 빠르게 가져오기
+    const newVolumes: Record<string, number | null> = {};
+    let failedKeywords: KeywordRecord[] = [];
+
+    // 각 키워드를 반드시 성공할 때까지 재시도하는 함수
+    const fetchWithRetry = async (item: KeywordRecord, maxRetries = 10): Promise<number | null> => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await fetch('/api/keywords/test-search-volume', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ keyword: item.keyword }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const searchVolume = data.search_volume?.actual_search_count ?? 
+                                data.search_volume?.total_combined_ratio ?? 
+                                null;
+            return searchVolume;
+          } else {
+            // HTTP 에러 (API 제한 등) 발생
+            console.warn(`[keyword-menu] API Error for ${item.keyword}: ${response.status}`, { attempt, maxRetries });
+            if (attempt < maxRetries) {
+              const delay = getRetryDelay(attempt);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+              continue; // 재시도
+            } else {
+              console.error(`[keyword-menu] 최종 실패: ${item.keyword} (${maxRetries}회 재시도 후)`);
+              return null;
+            }
+          }
+        } catch (err) {
+          // 네트워크 에러 발생
+          console.error(`[keyword-menu] Network Error for ${item.keyword}`, err, { attempt, maxRetries });
+          if (attempt < maxRetries) {
+            const delay = getRetryDelay(attempt);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            continue; // 재시도
+          } else {
+            console.error(`[keyword-menu] 최종 실패: ${item.keyword} (${maxRetries}회 재시도 후)`);
+            return null;
+          }
+        }
+      }
+      return null;
+    };
+
+    // 각 배치를 순차적으로 처리
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex];
       
-      // 배치 내에서 병렬 처리 (재시도 로직 포함)
-      const promises = batch.map(async (item, retryCount = 0) => {
-        const maxRetries = 2;
-        setFetchingSearchVolumes((prev) => new Set(prev).add(item.keyword));
+      // 배치 내에서 병렬 처리
+      const promises = batch.map(async (item) => {
+        const searchVolume = await fetchWithRetry(item, 10); // 최대 10회 재시도 (총 11회 시도)
         
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          try {
-            const response = await fetch('/api/keywords/test-search-volume', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ keyword: item.keyword }),
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-              const searchVolume = data.search_volume?.actual_search_count ?? 
-                                  data.search_volume?.total_combined_ratio ?? 
-                                  null;
-              setSearchVolumes((prev) => ({
-                ...prev,
-                [item.keyword]: searchVolume,
-              }));
-              return; // 성공하면 종료
-            } else if (attempt < maxRetries) {
-              // 실패 시 재시도 (짧은 딜레이 후)
-              await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
-              continue;
-            } else {
-              // 최종 실패
-              setSearchVolumes((prev) => ({
-                ...prev,
-                [item.keyword]: null,
-              }));
-            }
-          } catch (err) {
-            if (attempt < maxRetries) {
-              // 에러 시 재시도
-              await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
-              continue;
-            } else {
-              console.warn(`[keyword-menu] Failed to fetch search volume for ${item.keyword} after ${maxRetries + 1} attempts`, err);
-              setSearchVolumes((prev) => ({
-                ...prev,
-                [item.keyword]: null,
-              }));
-            }
-          }
+        if (searchVolume !== null) {
+          newVolumes[item.keyword] = searchVolume;
+        } else {
+          // 실패한 키워드는 나중에 다시 시도
+          failedKeywords.push(item);
         }
+        
+        // 프로그레스 업데이트 (최대값 제한)
+        setSearchVolumeProgress(prev => {
+          if (!prev) return null;
+          const newCompleted = Math.min(prev.completed + 1, prev.total);
+          return { ...prev, completed: newCompleted };
+        });
       });
 
       await Promise.all(promises);
 
       // 배치 간 짧은 딜레이 (API 호출 제한 방지)
       if (batchIndex < batches.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
+    }
+
+    // 실패한 키워드들을 다시 시도 (최대 3번 더 시도)
+    let retryRound = 0;
+    const maxRetryRounds = 3;
+    while (failedKeywords.length > 0 && retryRound < maxRetryRounds) {
+      retryRound++;
+      console.log(`[keyword-menu] 실패한 키워드 재시도 (라운드 ${retryRound}/${maxRetryRounds}): ${failedKeywords.length}개`);
       
-      // 모든 요청 완료 후 fetching 상태 정리
-      batch.forEach((item) => {
-        setFetchingSearchVolumes((prev) => {
-          const next = new Set(prev);
-          next.delete(item.keyword);
-          return next;
+      // 재시도 중임을 프로그레스 바에 표시
+      setSearchVolumeProgress(prev => {
+        if (!prev) return null;
+        return { ...prev, isRetrying: true, retryCount: retryRound, retryTotal: maxRetryRounds };
+      });
+      
+      // 실패한 키워드들을 다시 배치로 나누기
+      const retryBatches: KeywordRecord[][] = [];
+      for (let i = 0; i < failedKeywords.length; i += batchSize) {
+        retryBatches.push(failedKeywords.slice(i, i + batchSize));
+      }
+
+      const stillFailed: KeywordRecord[] = [];
+
+      for (const retryBatch of retryBatches) {
+        const retryPromises = retryBatch.map(async (item) => {
+          // 더 긴 딜레이 후 재시도
+          await new Promise((resolve) => setTimeout(resolve, 1000 * retryRound));
+          
+          const searchVolume = await fetchWithRetry(item, 10);
+          
+          if (searchVolume !== null) {
+            newVolumes[item.keyword] = searchVolume;
+          } else {
+            stillFailed.push(item);
+          }
+          
+          // 재시도 진행 상황 업데이트
+          setSearchVolumeProgress(prev => {
+            if (!prev) return null;
+            return { ...prev, completed: prev.total, isRetrying: true, retryCount: retryRound, retryTotal: maxRetryRounds };
+          });
         });
+
+        await Promise.all(retryPromises);
+        
+        // 배치 간 딜레이
+        if (retryBatches.indexOf(retryBatch) < retryBatches.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+
+      failedKeywords = stillFailed;
+      
+      // 재시도 라운드 완료 시 상태 업데이트
+      if (failedKeywords.length === 0) {
+        setSearchVolumeProgress(prev => {
+          if (!prev) return null;
+          return { ...prev, isRetrying: false };
+        });
+      }
+    }
+
+    // 최종적으로도 실패한 키워드가 있으면 경고
+    if (failedKeywords.length > 0) {
+      console.error(`[keyword-menu] 최종적으로 실패한 키워드: ${failedKeywords.length}개`, failedKeywords.map(k => k.keyword));
+      // 실패한 키워드도 null로 저장 (나중에 다시 시도할 수 있도록)
+      failedKeywords.forEach(item => {
+        newVolumes[item.keyword] = null;
       });
     }
+
+    // 모든 배치 완료 후, 상태 업데이트 (검색량 및 fetching 상태)
+    setSearchVolumes(prev => ({
+      ...prev,
+      ...newVolumes,
+    }));
+    
+    setFetchingSearchVolumes(prev => {
+      const next = new Set(prev);
+      keywordsNeedingVolume.forEach(item => next.delete(item.keyword));
+      return next;
+    });
+
+    // 모든 작업 완료 후 프로그레스 바 업데이트
+    setSearchVolumeProgress(prev => {
+      if (!prev) return null;
+      return { ...prev, completed: prev.total, isRetrying: false };
+    });
+    
+    // 프로그레스 바를 잠시 후 숨김 (재시도가 없었거나 모든 재시도가 완료된 경우)
+    setTimeout(() => {
+      setSearchVolumeProgress(null);
+    }, 2000);
   }, [searchVolumes, fetchingSearchVolumes]);
 
-  // 키워드 목록이 로드된 후 검색량이 없는 키워드들의 검색량 자동 가져오기 (즉시 실행)
+  // 키워드 목록이 로드된 후 모든 키워드의 검색량 자동 가져오기 (즉시 실행, 확실하게)
   useEffect(() => {
     if (keywords.length === 0 || fetchState === 'loading') return;
 
@@ -267,16 +393,27 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       return itemCategory === activeTab;
     });
 
+    // 클라이언트 상태에 검색량이 없거나 null인 모든 키워드 가져오기 (확실하게)
     const keywordsWithoutVolume = activeTabKeywords.filter((item) => {
-      const hasSearchVolume = item.blog?.search_volume !== null && item.blog?.search_volume !== undefined;
-      const isAlreadyFetched = searchVolumes[item.keyword] !== undefined;
-      return !hasSearchVolume && !isAlreadyFetched;
+      // 클라이언트 상태에 유효한 검색량이 있는 경우만 제외
+      const hasValidClientVolume = searchVolumes[item.keyword] !== undefined && searchVolumes[item.keyword] !== null;
+      const isFetching = fetchingSearchVolumes.has(item.keyword);
+      const wasAlreadyFetched = lastFetchedKeywordsRef.current.has(item.keyword);
+      
+      return !hasValidClientVolume && !isFetching && !wasAlreadyFetched;
     });
 
     if (keywordsWithoutVolume.length > 0) {
+      // 가져올 키워드들을 추적
+      keywordsWithoutVolume.forEach((item) => {
+        lastFetchedKeywordsRef.current.add(item.keyword);
+      });
+      
+      console.log(`[keyword-menu] 검색량 가져오기 시작: ${keywordsWithoutVolume.length}개 키워드`);
       void fetchSearchVolumesForKeywords(keywordsWithoutVolume);
     }
-  }, [keywords, fetchState, activeTab, searchVolumes, fetchSearchVolumesForKeywords]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keywords.length, fetchState, activeTab]);
 
   // 1시간마다 모든 키워드의 검색량 자동 새로고침
   useEffect(() => {
@@ -291,13 +428,16 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       });
 
       if (activeTabKeywords.length > 0) {
+        // 1시간마다 새로고침할 때는 추적 ref 초기화
+        lastFetchedKeywordsRef.current.clear();
         console.log(`[keyword-menu] 1시간마다 검색량 새로고침 시작: ${activeTabKeywords.length}개 키워드`);
         void fetchSearchVolumesForKeywords(activeTabKeywords, true); // forceRefresh = true
       }
     }, 3600000); // 1시간
 
     return () => clearInterval(interval);
-  }, [keywords, fetchState, activeTab, fetchSearchVolumesForKeywords]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keywords.length, fetchState, activeTab]);
 
   // 키워드 입력 시 블로그 ID 자동 가져오기
   useEffect(() => {
@@ -677,6 +817,33 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       {error && <div className={styles.errorMessage}>{error}</div>}
       {successMessage && <div className={styles.successMessage}>{successMessage}</div>}
 
+      {/* 검색량 가져오기 프로그레스 바 */}
+      {searchVolumeProgress && searchVolumeProgress.total > 0 && (
+        <div className={styles.progressContainer}>
+          <div className={styles.progressHeader}>
+            <span className={styles.progressLabel}>
+              {searchVolumeProgress.isRetrying 
+                ? `재시도 중... (${searchVolumeProgress.retryCount}/${searchVolumeProgress.retryTotal} 라운드)` 
+                : '검색량 조회 중...'}
+            </span>
+            <span className={styles.progressText}>
+              {Math.min(searchVolumeProgress.completed, searchVolumeProgress.total)} / {searchVolumeProgress.total} ({Math.round((Math.min(searchVolumeProgress.completed, searchVolumeProgress.total) / searchVolumeProgress.total) * 100)}%)
+            </span>
+          </div>
+          <div className={styles.progressBar}>
+            <div 
+              className={styles.progressFill}
+              style={{ width: `${Math.min((searchVolumeProgress.completed / searchVolumeProgress.total) * 100, 100)}%` }}
+            />
+          </div>
+          {searchVolumeProgress.isRetrying && (
+            <div className={styles.progressNote}>
+              열심히 검색량을 가져오고 있어요! 조금만 더 기다려주세요..!
+            </div>
+          )}
+        </div>
+      )}
+
       <div className={styles.tabs}>
         {CATEGORIES.map((category) => {
           const count = categoryCounts[category];
@@ -743,9 +910,8 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
                         ranking && ranking > 0 && ranking <= 3
                           ? styles.badge
                           : `${styles.badge} ${styles.badgeMuted}`;
-                      // 클라이언트 상태의 검색량을 우선 사용 (한번 가져온 값 유지), 없으면 DB 값 사용
-                      // DB에 저장하지 않으므로 비용 절감
-                      const searchVolume = searchVolumes[item.keyword] ?? item.blog?.search_volume ?? null;
+                      // 클라이언트 상태의 검색량만 사용 (DB에 저장하지 않으므로 비용 절감)
+                      const searchVolume = searchVolumes[item.keyword] ?? null;
                       const isFetchingVolume = fetchingSearchVolumes.has(item.keyword);
 
                       return (
