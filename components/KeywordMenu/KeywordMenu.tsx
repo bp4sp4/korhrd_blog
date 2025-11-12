@@ -577,7 +577,7 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th style={{ width: '30%' }}>키워드</th>
+                      <th style={{ width: '23%' }}>키워드</th>
                       <th style={{ width: '15%' }}>메달</th>
                       <th style={{ width: '12%' }}>블로그 ID</th>
                       <th style={{ width: '12%' }}>검색량</th>

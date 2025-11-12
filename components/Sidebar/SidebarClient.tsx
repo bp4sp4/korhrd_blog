@@ -105,6 +105,7 @@ export default function SidebarClient({ isAdmin }: SidebarClientProps) {
 
         {isAdmin && (
           <>
+            <div className={styles.navSectionHeader}>관리자</div>
             <div className={styles.navSection}>
               <a
                 href="/admin"
