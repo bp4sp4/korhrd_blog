@@ -244,25 +244,49 @@ export async function GET(request: NextRequest) {
 
     for (const record of records) {
       try {
-        // 1. 랭킹 가져오기
-        const entries = await fetchSmartblockEntries(record.keyword, request);
-        const matched = entries.find(
-          (entry) =>
-            entry.blogId &&
-            entry.blogId.toLowerCase() === record.id.toLowerCase()
-        );
+        // 1. 랭킹 가져오기 (단일 레코드 조회 시 더 짧은 타임아웃)
+        const timeout = records.length === 1 ? 20000 : 30000; // 단일: 20초, 여러: 30초
+        const entries = await fetchSmartblockEntries(record.keyword, request, timeout);
+        
+        // record의 identifier 수집
+        const recordIdentifiers = collectRecordIdentifiers(record);
+        
+        // entries에서 매칭되는 항목 찾기
+        let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
+        for (const entry of entries) {
+          const entryIdentifiers = collectEntryIdentifiers(entry);
+          const matchResult = findMatch(entryIdentifiers, recordIdentifiers);
+          if (matchResult) {
+            matched = entry;
+            break;
+          }
+        }
 
         const rank = matched ? matched.rank : null;
 
-        // 2. 검색량 가져오기
+        // 2. 검색량 가져오기 (타임아웃 10초)
         let searchVolume: number | null = null;
         try {
-          const searchCountResult = await fetchNaverSearchCountFromKeywordTool(record.keyword);
-          if (searchCountResult.total !== null && searchCountResult.total > 0) {
-            searchVolume = searchCountResult.total;
-            console.log(`[ranking] 검색량 수집 성공: ${record.keyword} = ${searchVolume}`);
-          } else {
-            console.log(`[ranking] 검색량 수집 실패 또는 0: ${record.keyword}`);
+          const searchVolumeController = new AbortController();
+          const searchVolumeTimeout = setTimeout(() => searchVolumeController.abort(), 10000);
+          
+          try {
+            const searchCountResult = await fetchNaverSearchCountFromKeywordTool(record.keyword);
+            clearTimeout(searchVolumeTimeout);
+            
+            if (searchCountResult.total !== null && searchCountResult.total > 0) {
+              searchVolume = searchCountResult.total;
+              console.log(`[ranking] 검색량 수집 성공: ${record.keyword} = ${searchVolume}`);
+            } else {
+              console.log(`[ranking] 검색량 수집 실패 또는 0: ${record.keyword}`);
+            }
+          } catch (searchVolumeFetchError: any) {
+            clearTimeout(searchVolumeTimeout);
+            if (searchVolumeFetchError.name === 'AbortError') {
+              console.warn(`[ranking] 검색량 조회 타임아웃: ${record.keyword}`);
+            } else {
+              throw searchVolumeFetchError;
+            }
           }
         } catch (searchVolumeError: any) {
           console.warn(`[ranking] 검색량 수집 실패: ${record.keyword}`, searchVolumeError?.message);
@@ -330,8 +354,10 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // API 호출 간격 조절 (랭킹 + 검색량)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // API 호출 간격 조절 (1시간마다 실행되므로 최소 딜레이만 유지)
+      if (records.length > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // 여러 레코드 조회 시에만 1초 대기
+      }
     }
 
     console.log('[ranking] debug', {
@@ -356,26 +382,37 @@ export async function GET(request: NextRequest) {
 
 async function fetchSmartblockEntries(
   keyword: string,
-  request: NextRequest
+  request: NextRequest,
+  timeout: number = 30000
 ): Promise<Awaited<ReturnType<typeof fetchNaverRanking>>> {
   try {
     const smartblockUrl = new URL('/api/smartblock', request.url);
-    const response = await fetch(smartblockUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-      body: JSON.stringify({ keyword }),
-    });
+    
+    // 타임아웃을 위한 AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      const response = await fetch(smartblockUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        body: JSON.stringify({ keyword }),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      return [];
-    }
+      clearTimeout(timeoutId);
 
-    const json = await response.json();
-    const smartBlocks = Array.isArray(json.smartBlocks) ? json.smartBlocks : [];
-    const results: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
+      if (!response.ok) {
+        console.warn(`[ranking] 스마트블록 API 응답 실패: ${response.status} - ${keyword}`);
+        return [];
+      }
+
+      const json = await response.json();
+      const smartBlocks = Array.isArray(json.smartBlocks) ? json.smartBlocks : [];
+      const results: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
 
     const extractBlogId = (value?: string | null): string | null => {
       if (!value) return null;
@@ -432,7 +469,16 @@ async function fetchSmartblockEntries(
       });
     }
 
-    return results;
+      return results;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        console.warn(`[ranking] 스마트블록 조회 타임아웃 (${timeout}ms): ${keyword}`);
+      } else {
+        console.error(`[ranking] 스마트블록 기반 순위 수집 실패: ${keyword}`, fetchError?.message);
+      }
+      return [];
+    }
   } catch (error) {
     console.error('[ranking] 스마트블록 기반 순위 수집 실패', error);
     return [];

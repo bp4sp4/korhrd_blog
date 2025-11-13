@@ -109,21 +109,64 @@ async function scrapeSmartBlocks(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   try {
-    if (useBrowserless) {
-      try {
-        browser = await playwrightChromium.connect({
-          wsEndpoint: browserlessEndpoint,
-        });
-      } catch (error) {
-        console.error(
-          '[smartblock] Browserless (Playwright) 연결 실패, 로컬/Chromium 런치로 폴백합니다.',
-          error
-        );
-        if (isVercel) {
-          console.warn(
-            '[smartblock] Vercel 환경에서 Browserless 연결이 실패했습니다. @sparticuz/chromium 실행으로 폴백을 시도합니다. 실행 시간이 길어질 수 있습니다.'
-          );
+    if (useBrowserless && browserlessEndpoint) {
+      // 429 에러 발생 시에만 재시도 (1시간마다 실행되므로 최소한의 재시도만)
+      let lastError: any = null;
+      const maxRetries = 2; // 재시도 1회만 (총 2회 시도)
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            // 재시도 전 대기 (5초)
+            console.log(`[smartblock] Browserless 재시도 ${attempt}/${maxRetries - 1} (5초 대기 후)`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+          
+          console.log(`[smartblock] Browserless 연결 시도 ${attempt + 1}/${maxRetries}: ${browserlessEndpoint}`);
+          
+          // 브라우저 연결 타임아웃 (15초)
+          const connectPromise = playwrightChromium.connect({
+            wsEndpoint: browserlessEndpoint,
+          });
+          
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Browserless 연결 타임아웃 (15초)')), 15000);
+          });
+          
+          browser = await Promise.race([connectPromise, timeoutPromise]);
+          console.log('[smartblock] Browserless 연결 성공');
+          break; // 성공하면 루프 종료
+        } catch (error: any) {
+          lastError = error;
+          const errorMessage = error?.message || String(error);
+          
+          // 429 에러인 경우에만 재시도
+          if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
+            console.warn(
+              `[smartblock] Browserless rate limit (429) - 재시도 ${attempt + 1}/${maxRetries}`,
+              errorMessage
+            );
+            if (attempt === maxRetries - 1) {
+              // 마지막 시도 실패 시 로컬로 폴백
+              console.error('[smartblock] Browserless rate limit으로 인한 최종 실패, 로컬/Chromium으로 폴백');
+              browser = null;
+            }
+          } else {
+            // 429가 아닌 다른 에러는 즉시 폴백
+            console.error(
+              '[smartblock] Browserless (Playwright) 연결 실패, 로컬/Chromium 런치로 폴백합니다.',
+              errorMessage
+            );
+            browser = null;
+            break;
+          }
         }
+      }
+      
+      if (!browser && isVercel) {
+        console.warn(
+          '[smartblock] Vercel 환경에서 Browserless 연결이 실패했습니다. @sparticuz/chromium 실행으로 폴백을 시도합니다. 실행 시간이 길어질 수 있습니다.'
+        );
       }
     }
 
