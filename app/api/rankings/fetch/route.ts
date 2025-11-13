@@ -308,28 +308,60 @@ export async function GET(request: NextRequest) {
           updateData.search_volume = searchVolume;
         }
 
-        const { error } = await adminClient
+        console.log(`[ranking] DB 업데이트 시도: ${record.id} / ${record.keyword}`, {
+          ranking: rank,
+          searchVolume: searchVolume,
+          updateData,
+        });
+
+        const { data: updateResult, error } = await adminClient
           .from('blog_records')
           .update(updateData)
           .eq('id', record.id)
-          .eq('keyword', record.keyword);
+          .eq('keyword', record.keyword)
+          .select('id, ranking, search_volume');
 
-        if (!error) {
-          await adminClient.from('record_activity_logs').insert({
-            action: 'update',
-            record_id: record.id,
-            keyword: record.keyword,
-            actor_id: null,
-            actor_name: 'crawler',
-            actor_role: 'system',
-            metadata: {
+        if (error) {
+          console.error(`[ranking] DB 업데이트 실패: ${record.id} / ${record.keyword}`, {
+            error: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            updateData,
+          });
+        } else {
+          const updatedCount = updateResult?.length || 0;
+          if (updatedCount > 0) {
+            console.log(`[ranking] DB 업데이트 성공: ${record.id} / ${record.keyword}`, {
+              updatedRows: updatedCount,
+              updatedData: updateResult?.[0],
               ranking: rank,
               searchVolume: searchVolume,
-              link: matched?.link ?? null,
-              nickname: matched?.nickname ?? null,
-              fetchedAt: new Date().toISOString(),
-            },
-          });
+            });
+            
+            // Activity log 기록
+            try {
+              await adminClient.from('record_activity_logs').insert({
+                action: 'update',
+                record_id: record.id,
+                keyword: record.keyword,
+                actor_id: null,
+                actor_name: 'crawler',
+                actor_role: 'system',
+                metadata: {
+                  ranking: rank,
+                  searchVolume: searchVolume,
+                  link: matched?.link ?? null,
+                  nickname: matched?.nickname ?? null,
+                  fetchedAt: new Date().toISOString(),
+                },
+              });
+            } catch (logError: any) {
+              console.warn(`[ranking] Activity log 기록 실패: ${record.id} / ${record.keyword}`, logError?.message);
+            }
+          } else {
+            console.warn(`[ranking] DB 업데이트: 매칭되는 행이 없음 (0개 업데이트됨): ${record.id} / ${record.keyword}`);
+          }
         }
 
         results.push({
@@ -339,7 +371,7 @@ export async function GET(request: NextRequest) {
           searchVolume: searchVolume,
           nickname: matched?.nickname ?? null,
           link: matched?.link ?? null,
-          success: !error,
+          success: !error && (updateResult?.length || 0) > 0,
           error: error?.message ?? null,
         });
       } catch (err: any) {

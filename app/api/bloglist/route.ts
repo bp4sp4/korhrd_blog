@@ -30,17 +30,26 @@ function resolveBrowserlessEndpoint() {
 
   const genericEndpoint = process.env.BROWSERLESS_WS_ENDPOINT;
   if (genericEndpoint) {
-    if (genericEndpoint.includes('/playwright')) {
-      return genericEndpoint;
-    }
+    // /chromium/playwright 경로가 없으면 추가
     try {
       const url = new URL(genericEndpoint);
-      if (!url.pathname.includes('/playwright')) {
-        url.pathname = url.pathname.replace(/\/?$/, '/playwright');
+      if (!url.pathname.includes('/chromium/playwright')) {
+        if (url.pathname === '/' || url.pathname === '') {
+          url.pathname = '/chromium/playwright';
+        } else if (url.pathname.endsWith('/playwright')) {
+          url.pathname = url.pathname.replace(/\/playwright$/, '/chromium/playwright');
+        } else {
+          url.pathname = url.pathname.replace(/\/?$/, '/chromium/playwright');
+        }
       }
       return url.toString();
     } catch {
-      return `${genericEndpoint}${genericEndpoint.includes('?') ? '&' : '?'}launch=playwright`;
+      // /chromium/playwright 경로 추가
+      if (!genericEndpoint.includes('/chromium/playwright')) {
+        const cleaned = genericEndpoint.replace(/\/playwright\/?$/, '').replace(/\/chromium\/?$/, '');
+        return `${cleaned}${cleaned.includes('?') ? '&' : '?'}token=${process.env.BROWSERLESS_TOKEN || ''}`;
+      }
+      return genericEndpoint;
     }
   }
 
@@ -54,7 +63,8 @@ function resolveBrowserlessEndpoint() {
     process.env.BROWSERLESS_DEPLOYMENT ||
     'production-sfo';
 
-  return `wss://${region}.browserless.io/playwright?token=${token}`;
+  // Browserless Playwright 엔드포인트: /chromium/playwright 경로 사용
+  return `wss://${region}.browserless.io/chromium/playwright?token=${token}`;
 }
 
 export async function POST(request: NextRequest) {

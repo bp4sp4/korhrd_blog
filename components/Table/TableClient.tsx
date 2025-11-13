@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
@@ -87,6 +87,7 @@ export default function TableClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [isRefreshingRankings, setIsRefreshingRankings] = useState(false);
 
   const logRecordActivity = async (
     action: 'create' | 'update' | 'delete',
@@ -466,27 +467,131 @@ export default function TableClient({
     }
   };
 
+  // 랭킹 업데이트 함수 (수동 호출 가능)
+  const updateRankings = useCallback(async () => {
+      try {
+        console.log('[blog-records] 랭킹 자동 업데이트 시작');
+        
+        // 모든 고유 ID 수집
+        const ids = Array.from(
+          new Set(
+            data
+              .map((item) => item.id?.trim().toLowerCase())
+              .filter((value): value is string => !!value)
+          )
+        );
+
+        if (ids.length === 0) {
+          console.warn('[blog-records] 랭킹 업데이트할 아이디가 없습니다.');
+          return;
+        }
+
+        console.log(`[blog-records] 총 ${ids.length}개 아이디의 랭킹 업데이트 시작`);
+
+        // API 호출 (최대 200개씩 처리)
+        const batchSize = 200;
+        const batches = [];
+        for (let i = 0; i < ids.length; i += batchSize) {
+          batches.push(ids.slice(i, i + batchSize));
+        }
+
+        let totalUpdated = 0;
+        let totalSuccess = 0;
+        let totalFailed = 0;
+
+        for (const batch of batches) {
+          const params = new URLSearchParams();
+          params.set('ids', batch.join(','));
+          params.set('limit', String(batch.length));
+
+          try {
+            const response = await fetch(`/api/rankings/fetch?${params.toString()}`, {
+              method: 'GET',
+              cache: 'no-store', // 캐시 방지
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+              console.error('[blog-records] 랭킹 업데이트 실패:', result?.error || '알 수 없는 오류');
+              totalFailed += batch.length;
+              continue;
+            }
+
+            // API 응답에서 실제 업데이트된 항목 확인
+            const updates = Array.isArray(result?.updated) ? result.updated : [];
+            const successCount = updates.filter((u: any) => u.success && (u.ranking !== null || u.searchVolume !== null)).length;
+            const rankingUpdated = updates.filter((u: any) => u.success && u.ranking !== null).length;
+            const searchVolumeUpdated = updates.filter((u: any) => u.success && u.searchVolume !== null).length;
+
+            totalUpdated += updates.length;
+            totalSuccess += successCount;
+
+            console.log(`[blog-records] 배치 업데이트 완료: ${batch.length}개 요청, ${successCount}개 성공 (랭킹: ${rankingUpdated}, 검색량: ${searchVolumeUpdated})`);
+          } catch (batchError: any) {
+            console.error(`[blog-records] 배치 처리 중 오류:`, batchError);
+            totalFailed += batch.length;
+          }
+        }
+
+        console.log(`[blog-records] 전체 업데이트 완료: 총 ${ids.length}개 중 ${totalSuccess}개 성공, ${totalFailed}개 실패`);
+
+        // 업데이트가 성공한 경우에만 페이지 새로고침
+        if (totalSuccess > 0) {
+          console.log('[blog-records] 페이지 새로고침 시작...');
+          // 약간의 지연 후 새로고침 (DB 업데이트가 완료될 시간 확보)
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          router.refresh();
+          console.log('[blog-records] 페이지 새로고침 완료');
+        } else {
+          console.warn('[blog-records] 업데이트된 항목이 없어 페이지 새로고침을 건너뜁니다.');
+        }
+      } catch (error: any) {
+        console.error('[blog-records] 랭킹 자동 업데이트 중 오류:', error);
+      } finally {
+        setIsRefreshingRankings(false);
+      }
+    }, [data, router]);
+
+  // 수동 랭킹 새로고침 핸들러
+  const handleManualRefreshRankings = async () => {
+    if (isRefreshingRankings) return;
+    setIsRefreshingRankings(true);
+    await updateRankings();
+  };
+
   // 한국 시간(KST) 기준 매 정시마다 모든 기록의 랭킹 자동 업데이트
   useEffect(() => {
     if (data.length === 0) return;
 
-    const updateRankings = () => {
-      console.log('[blog-records] 랭킹 자동 업데이트 시작');
-      router.refresh();
-    };
-
-    // 한국 시간(KST = UTC+9) 기준으로 다음 정시까지의 시간 계산
+    // 한국 시간(KST) 기준으로 다음 정시까지의 시간 계산
     const getTimeUntilNextHour = () => {
       const now = new Date();
-      const kstTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
-      const nextHour = new Date(kstTime);
-      nextHour.setMinutes(0);
-      nextHour.setSeconds(0);
-      nextHour.setMilliseconds(0);
-      nextHour.setHours(nextHour.getHours() + 1); // 다음 정시
       
-      const msUntilNextHour = nextHour.getTime() - kstTime.getTime();
-      return msUntilNextHour;
+      // KST 시간대(Asia/Seoul)의 현재 시간 정보 가져오기
+      const kstFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      
+      const kstParts = kstFormatter.formatToParts(now);
+      const kstHour = parseInt(kstParts.find(p => p.type === 'hour')?.value || '0', 10);
+      const kstMinute = parseInt(kstParts.find(p => p.type === 'minute')?.value || '0', 10);
+      const kstSecond = parseInt(kstParts.find(p => p.type === 'second')?.value || '0', 10);
+      
+      // 현재 KST 시간에서 다음 정시까지의 밀리초 계산
+      // 현재 분, 초, 밀리초를 제외한 나머지 시간을 계산
+      const currentMsInHour = (kstMinute * 60 + kstSecond) * 1000 + now.getMilliseconds();
+      const msUntilNextHour = (60 * 60 * 1000) - currentMsInHour;
+      
+      // 음수가 되면 안 되므로, 이미 정시를 지났다면 0 반환
+      return Math.max(0, msUntilNextHour);
     };
 
     // 다음 정시까지 대기 후 실행
@@ -496,9 +601,11 @@ export default function TableClient({
     let intervalId: NodeJS.Timeout | null = null;
     
     const timeoutId = setTimeout(() => {
-      updateRankings();
+      void updateRankings();
       // 그 다음부터 1시간마다 실행 (1시간 = 3600000ms)
-      intervalId = setInterval(updateRankings, 3600000);
+      intervalId = setInterval(() => {
+        void updateRankings();
+      }, 3600000);
     }, msUntilNextHour);
 
     return () => {
@@ -507,7 +614,7 @@ export default function TableClient({
         clearInterval(intervalId);
       }
     };
-  }, [data.length, router]);
+  }, [data.length, router, data]);
 
   return (
     <div>
@@ -526,7 +633,29 @@ export default function TableClient({
               <span className={styles.filterBadge}>활성</span>
             )}
           </div>
-          <div className={styles.filterHeaderRight}>
+          <div className={styles.filterHeaderRight} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleManualRefreshRankings();
+              }}
+              disabled={isRefreshingRankings}
+              style={{
+                padding: '6px 12px',
+                fontSize: '14px',
+                backgroundColor: isRefreshingRankings ? '#e5e7eb' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: isRefreshingRankings ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title="모든 랭킹 수동 새로고침"
+            >
+              {isRefreshingRankings ? '⏳' : '🔄'} {isRefreshingRankings ? '업데이트 중...' : '랭킹 새로고침'}
+            </button>
             <span className={styles.paginationInfo}>
               총 {filteredData.length}개 결과
             </span>

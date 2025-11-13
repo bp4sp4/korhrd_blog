@@ -7,7 +7,7 @@ import {
 } from 'playwright-core';
 
 export const runtime = 'nodejs';
-export const maxDuration = 20;
+export const maxDuration = 300; // 5분으로 증가 (크롤링 시간이 길어질 수 있음)
 
 let localChromiumPromise: Promise<typeof playwrightChromium> | null = null;
 
@@ -22,27 +22,50 @@ async function getLocalChromium() {
 function resolveBrowserlessEndpoint() {
   const explicitPlaywrightEndpoint = process.env.BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT;
   if (explicitPlaywrightEndpoint) {
+    // 명시적 엔드포인트 검증
+    if (!explicitPlaywrightEndpoint.startsWith('wss://') && !explicitPlaywrightEndpoint.startsWith('ws://')) {
+      console.warn('[smartblock] BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT가 올바른 WebSocket URL 형식이 아닙니다:', explicitPlaywrightEndpoint.substring(0, 50));
+    }
     return explicitPlaywrightEndpoint;
   }
 
   const genericEndpoint = process.env.BROWSERLESS_WS_ENDPOINT;
   if (genericEndpoint) {
-    if (genericEndpoint.includes('/playwright')) {
-      return genericEndpoint;
-    }
+    // 기존 엔드포인트가 이미 설정되어 있으면 그대로 사용
+    // /chromium/playwright 경로가 없으면 추가
     try {
       const url = new URL(genericEndpoint);
-      if (!url.pathname.includes('/playwright')) {
-        url.pathname = url.pathname.replace(/\/?$/, '/playwright');
+      // /chromium/playwright 경로가 없으면 추가
+      if (!url.pathname.includes('/chromium/playwright')) {
+        if (url.pathname === '/' || url.pathname === '') {
+          url.pathname = '/chromium/playwright';
+        } else if (url.pathname.endsWith('/playwright')) {
+          url.pathname = url.pathname.replace(/\/playwright$/, '/chromium/playwright');
+        } else {
+          url.pathname = url.pathname.replace(/\/?$/, '/chromium/playwright');
+        }
       }
       return url.toString();
-    } catch {
-      return `${genericEndpoint}${genericEndpoint.includes('?') ? '&' : '?'}launch=playwright`;
+    } catch (error) {
+      console.warn('[smartblock] BROWSERLESS_WS_ENDPOINT URL 파싱 실패:', error);
+      // /chromium/playwright 경로 추가
+      if (!genericEndpoint.includes('/chromium/playwright')) {
+        const cleaned = genericEndpoint.replace(/\/playwright\/?$/, '').replace(/\/chromium\/?$/, '');
+        return `${cleaned}${cleaned.includes('?') ? '&' : '?'}token=${process.env.BROWSERLESS_TOKEN || ''}`;
+      }
+      return genericEndpoint;
     }
   }
 
   const token = process.env.BROWSERLESS_TOKEN;
   if (!token) {
+    console.warn('[smartblock] BROWSERLESS_TOKEN이 설정되지 않았습니다.');
+    return null;
+  }
+
+  // 토큰이 비어있는지 확인
+  if (token.trim() === '') {
+    console.warn('[smartblock] BROWSERLESS_TOKEN이 비어있습니다.');
     return null;
   }
 
@@ -51,12 +74,25 @@ function resolveBrowserlessEndpoint() {
     process.env.BROWSERLESS_DEPLOYMENT ||
     'production-sfo';
 
-  return `wss://${region}.browserless.io?token=${token}`;
+  // Browserless Playwright 엔드포인트: /chromium/playwright 경로 사용
+  const endpoint = `wss://${region}.browserless.io/chromium/playwright?token=${token}`;
+  console.log(`[smartblock] Browserless 엔드포인트 생성: wss://${region}.browserless.io/chromium/playwright?token=***`);
+  return endpoint;
 }
 
 export async function POST(request: NextRequest) {
   const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
   const browserlessEndpoint = resolveBrowserlessEndpoint();
+
+  // Browserless 엔드포인트 진단 정보 로깅
+  console.log('[smartblock] Browserless 설정 확인:', {
+    hasExplicitEndpoint: !!process.env.BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT,
+    hasGenericEndpoint: !!process.env.BROWSERLESS_WS_ENDPOINT,
+    hasToken: !!process.env.BROWSERLESS_TOKEN,
+    region: process.env.BROWSERLESS_REGION || process.env.BROWSERLESS_DEPLOYMENT || 'production-sfo',
+    resolvedEndpoint: browserlessEndpoint ? `${browserlessEndpoint.substring(0, 50)}...` : 'null',
+    isVercel,
+  });
 
   try {
     const { keyword } = await request.json();
@@ -110,27 +146,30 @@ async function scrapeSmartBlocks(
 
   try {
     if (useBrowserless && browserlessEndpoint) {
-      // 429 에러 발생 시에만 재시도 (1시간마다 실행되므로 최소한의 재시도만)
+      // 배포 환경에서는 Browserless 연결이 필수이므로 더 적극적으로 재시도
       let lastError: any = null;
-      const maxRetries = 2; // 재시도 1회만 (총 2회 시도)
+      const maxRetries = isVercel ? 5 : 4; // Vercel 환경에서는 5회 시도, 로컬은 4회
       
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
           if (attempt > 0) {
-            // 재시도 전 대기 (5초)
-            console.log(`[smartblock] Browserless 재시도 ${attempt}/${maxRetries - 1} (5초 대기 후)`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // 재시도 전 대기 (지수 백오프: 3초, 6초, 12초, 15초)
+            const delay = Math.min(3000 * Math.pow(2, attempt - 1), 15000);
+            console.log(`[smartblock] Browserless 재시도 ${attempt}/${maxRetries - 1} (${delay}ms 대기 후)`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
           
           console.log(`[smartblock] Browserless 연결 시도 ${attempt + 1}/${maxRetries}: ${browserlessEndpoint}`);
           
-          // 브라우저 연결 타임아웃 (15초)
+          // 브라우저 연결 타임아웃 증가 (확실한 연결을 위해 60초)
+          const connectTimeout = 60000;
           const connectPromise = playwrightChromium.connect({
             wsEndpoint: browserlessEndpoint,
+            timeout: connectTimeout, // Playwright의 내장 타임아웃
           });
           
           const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Browserless 연결 타임아웃 (15초)')), 15000);
+            setTimeout(() => reject(new Error(`Browserless 연결 타임아웃 (${connectTimeout}ms)`)), connectTimeout);
           });
           
           browser = await Promise.race([connectPromise, timeoutPromise]);
@@ -139,11 +178,26 @@ async function scrapeSmartBlocks(
         } catch (error: any) {
           lastError = error;
           const errorMessage = error?.message || String(error);
+          const errorStack = error?.stack || '';
           
-          // 429 에러인 경우에만 재시도
+          // 상세한 에러 로깅
+          console.error(
+            `[smartblock] Browserless 연결 실패 (시도 ${attempt + 1}/${maxRetries}):`,
+            {
+              message: errorMessage,
+              endpoint: browserlessEndpoint ? `${browserlessEndpoint.substring(0, 80)}...` : 'null',
+              attempt: attempt + 1,
+              maxRetries,
+              errorType: error?.constructor?.name || 'Unknown',
+              errorCode: error?.code || 'N/A',
+              stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+            }
+          );
+          
+          // 429 에러인 경우
           if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
             console.warn(
-              `[smartblock] Browserless rate limit (429) - 재시도 ${attempt + 1}/${maxRetries}`,
+              `[smartblock] Browserless rate limit (429) - 재시도 예정`,
               errorMessage
             );
             if (attempt === maxRetries - 1) {
@@ -151,14 +205,64 @@ async function scrapeSmartBlocks(
               console.error('[smartblock] Browserless rate limit으로 인한 최종 실패, 로컬/Chromium으로 폴백');
               browser = null;
             }
-          } else {
-            // 429가 아닌 다른 에러는 즉시 폴백
-            console.error(
-              '[smartblock] Browserless (Playwright) 연결 실패, 로컬/Chromium 런치로 폴백합니다.',
+          } 
+          // WebSocket 연결 에러인 경우 (타임아웃 포함)
+          else if (
+            errorMessage.includes('WebSocket') || 
+            errorMessage.includes('ECONNREFUSED') || 
+            errorMessage.includes('ETIMEDOUT') ||
+            errorMessage.includes('ENOTFOUND') ||
+            errorMessage.includes('ECONNRESET') ||
+            errorMessage.includes('timeout') ||
+            errorMessage.includes('Timeout') ||
+            errorMessage.includes('exceeded') ||
+            error?.code === 'ECONNREFUSED' ||
+            error?.code === 'ETIMEDOUT' ||
+            error?.code === 'ENOTFOUND'
+          ) {
+            console.warn(
+              `[smartblock] Browserless 네트워크/타임아웃 에러 - 재시도 예정 (${attempt + 1}/${maxRetries})`,
+              {
+                message: errorMessage,
+                code: error?.code || 'N/A',
+                endpoint: browserlessEndpoint,
+                isVercel,
+              }
+            );
+            if (attempt === maxRetries - 1) {
+              // Vercel 환경에서는 Browserless 연결 실패 시 에러 발생 (폴백 불가)
+              if (isVercel) {
+                console.error('[smartblock] Vercel 환경에서 Browserless 연결 최종 실패 - 폴백 불가능', {
+                  message: errorMessage,
+                  code: error?.code || 'N/A',
+                  endpoint: browserlessEndpoint,
+                  attempts: maxRetries,
+                });
+                throw new Error(
+                  `Browserless 연결 실패: ${errorMessage}. Vercel 환경에서는 Browserless 연결이 필수입니다. ` +
+                  `토큰과 엔드포인트를 확인해주세요. (시도 횟수: ${maxRetries})`
+                );
+              } else {
+                console.error('[smartblock] Browserless 네트워크 에러로 인한 최종 실패, 로컬/Chromium으로 폴백', {
+                  message: errorMessage,
+                  code: error?.code || 'N/A',
+                  endpoint: browserlessEndpoint,
+                  hint: 'Browserless 서비스에 연결할 수 없습니다. 토큰이나 엔드포인트 URL을 확인해주세요.',
+                });
+                browser = null;
+              }
+            }
+          }
+          // 기타 에러도 재시도 시도
+          else {
+            console.warn(
+              `[smartblock] Browserless 기타 에러 - 재시도 예정`,
               errorMessage
             );
-            browser = null;
-            break;
+            if (attempt === maxRetries - 1) {
+              console.error('[smartblock] Browserless 연결 최종 실패, 로컬/Chromium으로 폴백', errorMessage);
+              browser = null;
+            }
           }
         }
       }
@@ -207,30 +311,56 @@ async function scrapeSmartBlocks(
       // ignore if viewport cannot be adjusted (e.g. persistent context)
     }
 
-    await page.goto(url, {
-      waitUntil: 'domcontentloaded',
-      timeout: isVercel ? 10000 : 60000,
-    });
+    // 페이지 로드 타임아웃 증가 (확실한 로딩을 위해 더 길게)
+    const pageLoadTimeout = isVercel ? 60000 : 90000; // Vercel: 60초, 로컬: 90초
+    console.log(`[smartblock] 페이지 로드 시작: ${url} (타임아웃: ${pageLoadTimeout}ms)`);
+    
+    try {
+      await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: pageLoadTimeout,
+      });
+      console.log('[smartblock] 페이지 로드 완료');
+      
+      // 페이지 로드 후 추가 대기 (동적 콘텐츠 로딩을 위해)
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } catch (error: any) {
+      console.error('[smartblock] 페이지 로드 실패:', error?.message || String(error));
+      // 페이지 로드 실패해도 계속 진행 (이미 로드된 내용 사용)
+      throw new Error(`페이지 로드 실패: ${error?.message || '알 수 없는 오류'}`);
+    }
 
+    // 스크롤 로직 개선 (더 많은 스크롤로 확실한 데이터 로딩)
     if (isVercel) {
+      // Vercel 환경: 더 많은 스크롤 포인트
       await page.evaluate(() => {
         window.scrollTo(0, 300);
       });
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       await page.evaluate(() => {
         window.scrollTo(0, 900);
       });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await page.evaluate(() => {
+        window.scrollTo(0, 1500);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     } else {
+      // 로컬 환경: 더 많은 스크롤 반복
       let prevHeight = 0;
-      for (let i = 0; i < 8; i += 1) {
+      for (let i = 0; i < 12; i += 1) {
         // eslint-disable-next-line no-await-in-loop
         prevHeight = await page.evaluate(() => document.body.scrollHeight);
         // eslint-disable-next-line no-await-in-loop
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await new Promise((resolve) => setTimeout(resolve, 2000)); // 1.2초 -> 2초로 증가
         // eslint-disable-next-line no-await-in-loop
         const newHeight = await page.evaluate(() => document.body.scrollHeight);
-        if (newHeight === prevHeight) break;
+        if (newHeight === prevHeight) {
+          // 높이가 변하지 않으면 한 번 더 대기 후 종료
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          break;
+        }
       }
     }
 
@@ -240,16 +370,23 @@ async function scrapeSmartBlocks(
       'a.jyxwDwu8umzdhCQxX48l',
     ];
 
+    // 스마트블록 요소 대기 (타임아웃 대폭 증가 - 확실한 요소 로딩을 위해)
+    const selectorTimeout = isVercel ? 15000 : 30000; // Vercel: 15초, 로컬: 30초
     try {
       await Promise.any(
         selectors.map((selector) =>
-          page.waitForSelector(selector, { timeout: isVercel ? 3000 : 15000 })
+          page.waitForSelector(selector, { timeout: selectorTimeout })
         )
       );
-    } catch {
-      console.warn('[smartblock] selector wait timeout, using current DOM');
+      console.log('[smartblock] 스마트블록 요소 발견');
+    } catch (error: any) {
+      console.warn('[smartblock] selector wait timeout, using current DOM', error?.message || String(error));
     }
-    await new Promise((resolve) => setTimeout(resolve, isVercel ? 500 : 2000));
+    
+    // 추가 대기 시간 증가 (동적 콘텐츠 로딩을 위해 더 길게)
+    const waitTime = isVercel ? 3000 : 5000; // Vercel: 3초, 로컬: 5초
+    console.log(`[smartblock] 최종 대기 중... (${waitTime}ms)`);
+    await new Promise((resolve) => setTimeout(resolve, waitTime));
 
     const smartBlocks = await page.evaluate(() => {
       const extractBlogId = (value?: string | null) => {
