@@ -87,7 +87,6 @@ export default function TableClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [isRefreshingRankings, setIsRefreshingRankings] = useState(false);
 
   const logRecordActivity = async (
     action: 'create' | 'update' | 'delete',
@@ -548,17 +547,8 @@ export default function TableClient({
         }
       } catch (error: any) {
         console.error('[blog-records] 랭킹 자동 업데이트 중 오류:', error);
-      } finally {
-        setIsRefreshingRankings(false);
       }
     }, [data, router]);
-
-  // 수동 랭킹 새로고침 핸들러
-  const handleManualRefreshRankings = async () => {
-    if (isRefreshingRankings) return;
-    setIsRefreshingRankings(true);
-    await updateRankings();
-  };
 
   // 한국 시간(KST) 기준 매 정시마다 모든 기록의 랭킹 자동 업데이트
   useEffect(() => {
@@ -633,29 +623,7 @@ export default function TableClient({
               <span className={styles.filterBadge}>활성</span>
             )}
           </div>
-          <div className={styles.filterHeaderRight} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleManualRefreshRankings();
-              }}
-              disabled={isRefreshingRankings}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                backgroundColor: isRefreshingRankings ? '#e5e7eb' : '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: isRefreshingRankings ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-              title="모든 랭킹 수동 새로고침"
-            >
-              {isRefreshingRankings ? '⏳' : '🔄'} {isRefreshingRankings ? '업데이트 중...' : '랭킹 새로고침'}
-            </button>
+          <div className={styles.filterHeaderRight}>
             <span className={styles.paginationInfo}>
               총 {filteredData.length}개 결과
             </span>
