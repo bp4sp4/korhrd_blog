@@ -592,6 +592,11 @@ export default function AdminTable({
 
   // 권한 체크 함수
   const canModifyRecord = (record: TableData): boolean => {
+    // owner는 모든 데이터 수정/삭제 가능
+    if (userRole === 'owner') {
+      return true;
+    }
+    
     // super_admin은 모든 데이터 수정/삭제 가능
     if (userRole === 'super_admin') {
       return true;
@@ -1122,24 +1127,35 @@ export default function AdminTable({
                       <td>{item.field}</td>
                       <td>{item.keyword}</td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {getMedalImage(item.ranking) ? (
-                            <img
-                              src={getMedalImage(item.ranking) || ''}
-                              alt={`${item.ranking}위 메달`}
-                              style={{ width: '24px', height: '24px', objectFit: 'contain' }}
-                            />
-                          ) : (
-                            <span>
-                              {item.ranking && item.ranking > 3 ? (
-                                <span style={{ color: '#9ca3af' }}>미노출</span>
-                              ) : item.ranking ? (
-                                item.ranking
-                              ) : (
-                                <span style={{ color: '#9ca3af' }}>미노출</span>
-                              )}
-                            </span>
-                          )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {getMedalImage(item.ranking) ? (
+                              <img
+                                src={getMedalImage(item.ranking) || ''}
+                                alt={`${item.ranking}위 메달`}
+                                style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                              />
+                            ) : (
+                              <span>
+                                {item.ranking && item.ranking > 3 ? (
+                                  <span style={{ color: '#9ca3af' }}>미노출</span>
+                                ) : item.ranking ? (
+                                  item.ranking
+                                ) : (
+                                  <span style={{ color: '#9ca3af' }}>미노출</span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            className={styles.refreshButton}
+                            onClick={() => handleRefreshRanking(item)}
+                            disabled={!canModify || isSubmitting || refreshingRecords.has(getRecordKey(item))}
+                            title="순위 새로고침"
+                            style={{ fontSize: '12px', padding: '4px 8px', minWidth: '28px', height: '24px' }}
+                          >
+                            {refreshingRecords.has(getRecordKey(item)) ? '⏳' : '🔄'}
+                          </button>
                         </div>
                       </td>
                       <td>

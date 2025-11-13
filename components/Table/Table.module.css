@@ -96,6 +96,35 @@
   text-decoration: underline;
 }
 
+.refreshButton {
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+}
+
+.refreshButton:hover:not(:disabled) {
+  background-color: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.refreshButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refreshButton:active:not(:disabled) {
+  background-color: #d1d5db;
+}
+
 .filterSection {
   background-color: white;
   border-radius: 8px;

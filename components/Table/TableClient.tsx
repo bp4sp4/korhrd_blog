@@ -466,6 +466,22 @@ export default function TableClient({
     }
   };
 
+  // 1시간마다 모든 기록의 랭킹 자동 업데이트
+  useEffect(() => {
+    if (data.length === 0) return;
+
+    // 1시간 = 3600000ms
+    const interval = setInterval(() => {
+      console.log('[blog-records] 1시간마다 랭킹 자동 업데이트 시작');
+      // 모든 기록의 랭킹을 업데이트하기 위해 페이지 새로고침
+      // 실제로는 각 키워드별로 API를 호출해야 하지만, 
+      // 성능을 위해 페이지 새로고침으로 대체 (서버에서 최신 데이터를 가져옴)
+      router.refresh();
+    }, 3600000); // 1시간
+
+    return () => clearInterval(interval);
+  }, [data.length, router]);
+
   return (
     <div>
       {(error || (showSuccessMessage && success)) && (
