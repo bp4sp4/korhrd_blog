@@ -431,6 +431,7 @@ async function scrapeSmartBlocks(
 
       const results: any[] = [];
 
+      // 1. 스마트블록 영역 찾기
       let roots = Array.from(document.querySelectorAll('.fds-collection-root'));
       if (roots.length === 0) {
         roots = Array.from(
@@ -528,6 +529,85 @@ async function scrapeSmartBlocks(
             type: 'table',
             data: items,
           });
+        }
+      }
+
+      // 2. 일반 검색 결과 영역 찾기 (스마트블록이 없거나 결과가 적을 때)
+      // spw_rerank 영역의 일반 검색 결과도 수집
+      if (results.length === 0 || results.every(r => r.data.length === 0)) {
+        const generalSearchRoots = Array.from(document.querySelectorAll('.spw_rerank'));
+        
+        for (const generalRoot of generalSearchRoots) {
+          // 일반 검색 결과 내의 UGC 아이템 찾기
+          const generalModules = Array.from(
+            generalRoot.querySelectorAll('.sds-comps-vertical-layout[data-template-id="ugcItem"]')
+          );
+
+          if (generalModules.length > 0) {
+            const items: any[] = [];
+            let blockTitle = '일반 검색 결과';
+
+            generalModules.forEach((module, itemIndex) => {
+              const title = selectText(
+                module,
+                '.sds-comps-text-type-headline1',
+                '.sds-comps-text-ellipsis-1',
+                'a[href*="blog.naver.com"]',
+                'a[href*="cafe.naver.com"]'
+              );
+              const content = selectText(
+                module,
+                '.sds-comps-text-type-body1',
+                '.fds-ugc-ellipsis2',
+                '.fds-ugc-ellipsis3'
+              );
+              const link = selectHref(
+                module,
+                '.sds-comps-text-type-headline1 a',
+                '.sds-comps-profile-info-title a',
+                'a[href*="blog.naver.com"]',
+                'a[href*="cafe.naver.com"]'
+              );
+              const profileLink = selectHref(
+                module,
+                '.sds-comps-profile-source-thumb a',
+                '.sds-comps-profile-info-title a'
+              );
+              const nickname = selectText(
+                module,
+                '.sds-comps-profile-info-title .sds-comps-text',
+                '.sds-comps-text-ellipsis-1'
+              );
+
+              const blogId = extractBlogId(profileLink) || extractBlogId(link);
+
+              if (title && (blogId || link)) {
+                items.push({
+                  index: itemIndex + 1,
+                  title,
+                  content,
+                  link,
+                  profileLink,
+                  blogId,
+                  authorId: blogId,
+                  nickname,
+                  author: nickname,
+                });
+              }
+            });
+
+            if (items.length > 0) {
+              results.push({
+                id: `general_search_${Date.now()}`,
+                title: blockTitle,
+                icon: '📋',
+                type: 'table',
+                data: items,
+              });
+              // 첫 번째 일반 검색 결과만 수집 (1등 확인용)
+              break;
+            }
+          }
         }
       }
 

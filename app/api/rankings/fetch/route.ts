@@ -456,7 +456,23 @@ async function fetchSmartblockEntries(
       return fromUrl ? fromUrl.toLowerCase() : null;
     };
 
-    for (const block of smartBlocks) {
+    // 스마트블록과 일반 검색 결과를 구분
+    const smartBlockBlocks = smartBlocks.filter(
+      (block: any) => block?.title && !block.title.includes('일반 검색 결과')
+    );
+    const generalSearchBlocks = smartBlocks.filter(
+      (block: any) => block?.title && block.title.includes('일반 검색 결과')
+    );
+
+    // 스마트블록의 총 아이템 수 계산 (일반 검색 결과의 rank 오프셋 계산용)
+    let smartBlockItemCount = 0;
+    for (const block of smartBlockBlocks) {
+      const items = Array.isArray(block?.data) ? block.data : [];
+      smartBlockItemCount += items.length;
+    }
+
+    // 1. 스마트블록 처리
+    for (const block of smartBlockBlocks) {
       const items = Array.isArray(block?.data) ? block.data : [];
       items.forEach((item: any, index: number) => {
         const rawBlogId =
@@ -494,7 +510,56 @@ async function fetchSmartblockEntries(
           blogId: blogId ?? '',
           title,
           link,
-          rank: index + 1,
+          rank: index + 1, // 스마트블록 내 순위
+          nickname,
+          snippet,
+        });
+      });
+    }
+
+    // 2. 일반 검색 결과 처리 (스마트블록이 없으면 1등부터, 있으면 스마트블록 다음 순위부터)
+    for (const block of generalSearchBlocks) {
+      const items = Array.isArray(block?.data) ? block.data : [];
+      items.forEach((item: any, index: number) => {
+        const rawBlogId =
+          typeof item?.authorId === 'string'
+            ? item.authorId
+            : typeof item?.blogId === 'string'
+            ? item.blogId
+            : undefined;
+        const blogId =
+          extractBlogId(rawBlogId) ??
+          extractBlogId(typeof item?.profileLink === 'string' ? item.profileLink : undefined) ??
+          extractBlogId(typeof item?.link === 'string' ? item.link : undefined);
+
+        const nicknameRaw =
+          typeof item?.author === 'string'
+            ? item.author
+            : typeof item?.nickname === 'string'
+            ? item.nickname
+            : undefined;
+        const nickname = nicknameRaw ? nicknameRaw.trim() : undefined;
+
+        if (!blogId && !nickname) {
+          return;
+        }
+
+        const title =
+          typeof item?.title === 'string' ? item.title.trim() : '';
+        const link =
+          typeof item?.link === 'string' ? item.link : '';
+        const snippet =
+          typeof item?.content === 'string' ? item.content.trim() : undefined;
+
+        // 일반 검색 결과의 rank: 스마트블록이 없으면 1등부터, 있으면 스마트블록 다음 순위부터
+        const rank = smartBlockItemCount === 0 ? index + 1 : smartBlockItemCount + index + 1;
+
+        results.push({
+          keyword,
+          blogId: blogId ?? '',
+          title,
+          link,
+          rank,
           nickname,
           snippet,
         });
