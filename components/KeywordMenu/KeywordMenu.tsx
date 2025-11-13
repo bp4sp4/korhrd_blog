@@ -415,12 +415,11 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keywords.length, fetchState, activeTab]);
 
-  // 1시간마다 모든 키워드의 검색량 자동 새로고침
+  // 한국 시간(KST) 기준 매 정시마다 모든 키워드의 검색량 자동 새로고침
   useEffect(() => {
     if (keywords.length === 0 || fetchState === 'loading') return;
 
-    // 1시간 = 3600000ms
-    const interval = setInterval(() => {
+    const refreshSearchVolumes = () => {
       // 활성 탭에 해당하는 모든 키워드의 검색량 새로고침
       const activeTabKeywords = keywords.filter((item) => {
         const itemCategory = (item.category as Category) || '사회복지사';
@@ -430,12 +429,43 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       if (activeTabKeywords.length > 0) {
         // 1시간마다 새로고침할 때는 추적 ref 초기화
         lastFetchedKeywordsRef.current.clear();
-        console.log(`[keyword-menu] 1시간마다 검색량 새로고침 시작: ${activeTabKeywords.length}개 키워드`);
+        console.log(`[keyword-menu] 검색량 새로고침 시작: ${activeTabKeywords.length}개 키워드`);
         void fetchSearchVolumesForKeywords(activeTabKeywords, true); // forceRefresh = true
       }
-    }, 3600000); // 1시간
+    };
 
-    return () => clearInterval(interval);
+    // 한국 시간(KST = UTC+9) 기준으로 다음 정시까지의 시간 계산
+    const getTimeUntilNextHour = () => {
+      const now = new Date();
+      const kstTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
+      const nextHour = new Date(kstTime);
+      nextHour.setMinutes(0);
+      nextHour.setSeconds(0);
+      nextHour.setMilliseconds(0);
+      nextHour.setHours(nextHour.getHours() + 1); // 다음 정시
+      
+      const msUntilNextHour = nextHour.getTime() - kstTime.getTime();
+      return msUntilNextHour;
+    };
+
+    // 다음 정시까지 대기 후 실행
+    const msUntilNextHour = getTimeUntilNextHour();
+    console.log(`[keyword-menu] 다음 정시까지 ${Math.round(msUntilNextHour / 1000 / 60)}분 대기 후 검색량 새로고침 시작`);
+    
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    const timeoutId = setTimeout(() => {
+      refreshSearchVolumes();
+      // 그 다음부터 1시간마다 실행 (1시간 = 3600000ms)
+      intervalId = setInterval(refreshSearchVolumes, 3600000);
+    }, msUntilNextHour);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keywords.length, fetchState, activeTab]);
 

@@ -466,20 +466,47 @@ export default function TableClient({
     }
   };
 
-  // 1시간마다 모든 기록의 랭킹 자동 업데이트
+  // 한국 시간(KST) 기준 매 정시마다 모든 기록의 랭킹 자동 업데이트
   useEffect(() => {
     if (data.length === 0) return;
 
-    // 1시간 = 3600000ms
-    const interval = setInterval(() => {
-      console.log('[blog-records] 1시간마다 랭킹 자동 업데이트 시작');
-      // 모든 기록의 랭킹을 업데이트하기 위해 페이지 새로고침
-      // 실제로는 각 키워드별로 API를 호출해야 하지만, 
-      // 성능을 위해 페이지 새로고침으로 대체 (서버에서 최신 데이터를 가져옴)
+    const updateRankings = () => {
+      console.log('[blog-records] 랭킹 자동 업데이트 시작');
       router.refresh();
-    }, 3600000); // 1시간
+    };
 
-    return () => clearInterval(interval);
+    // 한국 시간(KST = UTC+9) 기준으로 다음 정시까지의 시간 계산
+    const getTimeUntilNextHour = () => {
+      const now = new Date();
+      const kstTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // UTC+9
+      const nextHour = new Date(kstTime);
+      nextHour.setMinutes(0);
+      nextHour.setSeconds(0);
+      nextHour.setMilliseconds(0);
+      nextHour.setHours(nextHour.getHours() + 1); // 다음 정시
+      
+      const msUntilNextHour = nextHour.getTime() - kstTime.getTime();
+      return msUntilNextHour;
+    };
+
+    // 다음 정시까지 대기 후 실행
+    const msUntilNextHour = getTimeUntilNextHour();
+    console.log(`[blog-records] 다음 정시까지 ${Math.round(msUntilNextHour / 1000 / 60)}분 대기 후 랭킹 업데이트 시작`);
+    
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    const timeoutId = setTimeout(() => {
+      updateRankings();
+      // 그 다음부터 1시간마다 실행 (1시간 = 3600000ms)
+      intervalId = setInterval(updateRankings, 3600000);
+    }, msUntilNextHour);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, [data.length, router]);
 
   return (
