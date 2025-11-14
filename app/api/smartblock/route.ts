@@ -449,6 +449,9 @@ async function scrapeSmartBlocks(
         const titleSelectors = [
           '.fds-comps-header-headline .fds-comps-text',
           '.fds-comps-header-headline',
+          '.sds-comps-header-title h2',
+          '.sds-comps-header-title .sds-comps-text',
+          '.sds-comps-header-title',
           '.zGAg4BVegdEEkSYCTjAo .fds-comps-text',
           '.LesvR5EImSth_zBjoUn2 .fds-comps-text',
         ];
@@ -538,50 +541,106 @@ async function scrapeSmartBlocks(
         const generalSearchRoots = Array.from(document.querySelectorAll('.spw_rerank'));
         
         for (const generalRoot of generalSearchRoots) {
-          // 일반 검색 결과 내의 UGC 아이템 찾기
-          const generalModules = Array.from(
+          // 일반 검색 결과 내의 UGC 아이템 찾기 (ugcItem: 블로그/카페, webItem: 웹사이트)
+          const ugcModules = Array.from(
             generalRoot.querySelectorAll('.sds-comps-vertical-layout[data-template-id="ugcItem"]')
           );
+          const webModules = Array.from(
+            generalRoot.querySelectorAll('.sds-comps-vertical-layout[data-template-id="webItem"], .fds-web-doc-root')
+          );
 
-          if (generalModules.length > 0) {
+          const allModules = [...ugcModules, ...webModules];
+
+          if (allModules.length > 0) {
             const items: any[] = [];
             let blockTitle = '일반 검색 결과';
 
-            generalModules.forEach((module, itemIndex) => {
-              const title = selectText(
-                module,
-                '.sds-comps-text-type-headline1',
-                '.sds-comps-text-ellipsis-1',
-                'a[href*="blog.naver.com"]',
-                'a[href*="cafe.naver.com"]'
-              );
-              const content = selectText(
-                module,
-                '.sds-comps-text-type-body1',
-                '.fds-ugc-ellipsis2',
-                '.fds-ugc-ellipsis3'
-              );
-              const link = selectHref(
-                module,
-                '.sds-comps-text-type-headline1 a',
-                '.sds-comps-profile-info-title a',
-                'a[href*="blog.naver.com"]',
-                'a[href*="cafe.naver.com"]'
-              );
-              const profileLink = selectHref(
-                module,
-                '.sds-comps-profile-source-thumb a',
-                '.sds-comps-profile-info-title a'
-              );
-              const nickname = selectText(
-                module,
-                '.sds-comps-profile-info-title .sds-comps-text',
-                '.sds-comps-text-ellipsis-1'
-              );
+            allModules.forEach((module, itemIndex) => {
+              // UGC 아이템 (블로그/카페) 처리
+              const isUgcItem = module.getAttribute('data-template-id') === 'ugcItem' || 
+                                module.classList.contains('fds-ugc-single-intention-item-list-rra');
+              
+              // Web 아이템 처리
+              const isWebItem = module.getAttribute('data-template-id') === 'webItem' || 
+                               module.classList.contains('fds-web-doc-root');
+
+              let title = '';
+              let content = '';
+              let link = '';
+              let profileLink = '';
+              let nickname = '';
+
+              if (isUgcItem) {
+                // 블로그/카페 아이템
+                title = selectText(
+                  module,
+                  '.sds-comps-text-type-headline1',
+                  '.sds-comps-text-ellipsis-1',
+                  'a[href*="blog.naver.com"]',
+                  'a[href*="cafe.naver.com"]'
+                );
+                content = selectText(
+                  module,
+                  '.sds-comps-text-type-body1',
+                  '.fds-ugc-ellipsis2',
+                  '.fds-ugc-ellipsis3'
+                );
+                link = selectHref(
+                  module,
+                  '.sds-comps-text-type-headline1 a',
+                  '.sds-comps-profile-info-title a',
+                  'a[href*="blog.naver.com"]',
+                  'a[href*="cafe.naver.com"]'
+                );
+                profileLink = selectHref(
+                  module,
+                  '.sds-comps-profile-source-thumb a',
+                  '.sds-comps-profile-info-title a'
+                );
+                nickname = selectText(
+                  module,
+                  '.sds-comps-profile-info-title .sds-comps-text',
+                  '.sds-comps-text-ellipsis-1'
+                );
+              } else if (isWebItem) {
+                // 웹사이트 아이템 (블로그/카페가 아닌 일반 웹사이트도 처리)
+                title = selectText(
+                  module,
+                  '.sds-comps-text-type-headline1',
+                  '.sds-comps-text-ellipsis-1',
+                  'a[href*="blog.naver.com"]',
+                  'a[href*="cafe.naver.com"]'
+                );
+                content = selectText(
+                  module,
+                  '.sds-comps-text-type-body1',
+                  '.sds-comps-text-content'
+                );
+                link = selectHref(
+                  module,
+                  '.sds-comps-text-type-headline1 a',
+                  '.sds-comps-profile-info-title a',
+                  'a[href*="blog.naver.com"]',
+                  'a[href*="cafe.naver.com"]',
+                  'a[target="_blank"]'
+                );
+                profileLink = selectHref(
+                  module,
+                  '.sds-comps-profile-source-thumb a',
+                  '.sds-comps-profile-info-title a',
+                  '.sds-comps-profile a'
+                );
+                nickname = selectText(
+                  module,
+                  '.sds-comps-profile-info-title .sds-comps-text',
+                  '.sds-comps-profile-info-title-text'
+                );
+              }
 
               const blogId = extractBlogId(profileLink) || extractBlogId(link);
 
-              if (title && (blogId || link)) {
+              // 블로그/카페 링크가 있거나 제목이 있으면 수집
+              if (title && (link || blogId)) {
                 items.push({
                   index: itemIndex + 1,
                   title,
