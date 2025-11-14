@@ -78,6 +78,19 @@
   white-space: normal !important;
 }
 
+/* 키워드 셀 스타일 - 넓게 표시 */
+.keywordHeader,
+.keywordCell {
+  min-width: 180px !important;
+  max-width: 250px !important;
+}
+
+.keywordCell {
+  white-space: normal !important;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
 /* 체크박스 셀 스타일 - 말줄임표 제거 */
 .tableHeader th:first-child,
 .tableBody td:first-child {

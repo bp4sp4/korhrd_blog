@@ -839,7 +839,7 @@ export default function TableClient({
                 </th>
                 <th>아이디</th>
                 <th>분야</th>
-                <th>키워드</th>
+                <th className={styles.keywordHeader}>키워드</th>
                 <th>상위노출 순위</th>
                 <th>검색량</th>
                 <th>제목</th>
@@ -870,7 +870,7 @@ export default function TableClient({
                       </td>
                       <td className={styles.idCell}>{item.id}</td>
                       <td>{item.field}</td>
-                      <td>{item.keyword}</td>
+                      <td className={styles.keywordCell}>{item.keyword}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {getMedalImage(item.ranking) ? (
