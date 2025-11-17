@@ -893,6 +893,55 @@ export async function fetchNaverRanking(
   const $ = load(html);
   const result: NaverSearchResult[] = [];
 
+  // 광고인지 확인하는 함수
+  const isAd = (element: any, $: ReturnType<typeof load>): boolean => {
+    const $el = $(element);
+    
+    // 광고 관련 클래스 확인
+    const adClasses = [
+      'api_ad_text',
+      'api_ad_sa',
+      'ad',
+      'ad_item',
+      'sponsored',
+      'advert',
+      'advertisement',
+      'fds-ad',
+      'sds-ad',
+    ];
+    
+    // 모듈 자체 또는 부모 요소에 광고 클래스가 있는지 확인
+    for (const adClass of adClasses) {
+      if ($el.hasClass(adClass) || $el.parents(`.${adClass}`).length > 0) {
+        return true;
+      }
+    }
+    
+    // 광고 텍스트 확인
+    const adTexts = ['광고', 'AD', 'Ad', 'Sponsored', 'SPONSORED'];
+    const moduleText = $el.text() || '';
+    for (const adText of adTexts) {
+      if (moduleText.includes(adText)) {
+        // 광고 레이블로 표시된 경우만 제외
+        const hasAdLabel = $el.find('[class*="ad"], [class*="sponsor"], [aria-label*="광고"], [aria-label*="ad"]').length > 0 ||
+                          $el.parents('[class*="ad"], [class*="sponsor"]').length > 0;
+        if (hasAdLabel) {
+          return true;
+        }
+      }
+    }
+    
+    // data 속성으로 광고 표시 확인
+    const dataAttrs = ['data-ad', 'data-sponsor', 'data-sponsored'];
+    for (const attr of dataAttrs) {
+      if ($el.attr(attr) || $el.parents(`[${attr}]`).length > 0) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
   const extractBlogId = (href?: string | null): string | null => {
     if (!href) return null;
     const directMatch = href.match(/blog\.naver\.com\/([^/?#]+)/);
@@ -916,6 +965,11 @@ export async function fetchNaverRanking(
 
   if (smartBlockModules.length > 0) {
     smartBlockModules.each((idx, element) => {
+      // 광고 제외
+      if (isAd(element, $)) {
+        return;
+      }
+
       const profileAnchor = $(element).find('a.fds-thumb-anchor').first();
       const profileHref = profileAnchor.attr('href') ?? '';
       let blogId = extractBlogId(profileHref);
@@ -961,6 +1015,11 @@ export async function fetchNaverRanking(
 
   if (result.length === 0) {
     $('.sds-comps-vertical-layout[data-template-id="ugcItem"]').each((idx, element) => {
+      // 광고 제외
+      if (isAd(element, $)) {
+        return;
+      }
+
       const profileAnchor = $(element).find('a.jyxwDwu8umzdhCQxX48l').first();
       const titleElement = $(element).find('.sds-comps-text-type-headline1').first();
       const link = profileAnchor.attr('href') ?? '';

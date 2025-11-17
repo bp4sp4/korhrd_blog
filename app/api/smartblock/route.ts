@@ -429,6 +429,54 @@ async function scrapeSmartBlocks(
         return '';
       };
 
+      // 광고인지 확인하는 함수
+      const isAd = (module: Element): boolean => {
+        // 광고 관련 클래스 확인
+        const adClasses = [
+          'api_ad_text',
+          'api_ad_sa',
+          'ad',
+          'ad_item',
+          'sponsored',
+          'advert',
+          'advertisement',
+          'fds-ad',
+          'sds-ad',
+        ];
+        
+        // 모듈 자체 또는 부모 요소에 광고 클래스가 있는지 확인
+        for (const adClass of adClasses) {
+          if (module.classList.contains(adClass) || 
+              module.closest(`.${adClass}`) !== null) {
+            return true;
+          }
+        }
+        
+        // 광고 텍스트 확인
+        const adTexts = ['광고', 'AD', 'Ad', 'Sponsored', 'SPONSORED'];
+        const moduleText = module.textContent || '';
+        for (const adText of adTexts) {
+          if (moduleText.includes(adText)) {
+            // 단, 제목이나 본문에 광고라는 단어가 포함된 경우는 제외
+            // 광고 레이블로 표시된 경우만 제외
+            const adLabel = module.querySelector('[class*="ad"], [class*="sponsor"], [aria-label*="광고"], [aria-label*="ad"]');
+            if (adLabel) {
+              return true;
+            }
+          }
+        }
+        
+        // data 속성으로 광고 표시 확인
+        const dataAttrs = ['data-ad', 'data-sponsor', 'data-sponsored'];
+        for (const attr of dataAttrs) {
+          if (module.hasAttribute(attr) || module.closest(`[${attr}]`) !== null) {
+            return true;
+          }
+        }
+        
+        return false;
+      };
+
       const results: any[] = [];
 
       // 1. 스마트블록 영역 찾기
@@ -473,6 +521,11 @@ async function scrapeSmartBlocks(
         const items: any[] = [];
 
         modules.forEach((module, itemIndex) => {
+          // 광고 제외
+          if (isAd(module)) {
+            return;
+          }
+
           const title = selectText(
             module,
             '.fds-comps-right-image-text-title .fds-comps-text',
@@ -516,7 +569,7 @@ async function scrapeSmartBlocks(
 
           if (title) {
             items.push({
-              index: itemIndex + 1,
+              index: 0, // 나중에 재계산
               title,
               content,
               link,
@@ -527,6 +580,11 @@ async function scrapeSmartBlocks(
               author: nickname,
             });
           }
+        });
+
+        // 광고 제외 후 순위 재계산 (1부터 시작)
+        items.forEach((item, index) => {
+          item.index = index + 1;
         });
 
         if (items.length > 0) {
@@ -561,6 +619,11 @@ async function scrapeSmartBlocks(
             let blockTitle = '일반 검색 결과';
 
             allModules.forEach((module, itemIndex) => {
+              // 광고 제외
+              if (isAd(module)) {
+                return;
+              }
+
               // UGC 아이템 (블로그/카페) 처리
               const isUgcItem = module.getAttribute('data-template-id') === 'ugcItem' || 
                                 module.classList.contains('fds-ugc-single-intention-item-list-rra');
@@ -652,7 +715,7 @@ async function scrapeSmartBlocks(
               // 블로그/카페 링크가 있거나 제목이 있으면 수집
               if (title && (link || blogId)) {
                 items.push({
-                  index: itemIndex + 1,
+                  index: 0, // 나중에 재계산
                   title,
                   content,
                   link,
@@ -663,6 +726,11 @@ async function scrapeSmartBlocks(
                   author: nickname,
                 });
               }
+            });
+
+            // 광고 제외 후 순위 재계산 (1부터 시작)
+            items.forEach((item, index) => {
+              item.index = index + 1;
             });
 
             if (items.length > 0) {
