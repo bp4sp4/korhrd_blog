@@ -149,6 +149,7 @@ export default function TableClient({
     };
   }, [data.length]);
 
+
   const logRecordActivity = async (
     action: 'create' | 'update' | 'delete',
     record: TableData,
