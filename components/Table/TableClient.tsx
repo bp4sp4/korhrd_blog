@@ -87,6 +87,7 @@ export default function TableClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
 
   const logRecordActivity = async (
     action: 'create' | 'update' | 'delete',
@@ -538,6 +539,14 @@ export default function TableClient({
         // 업데이트가 성공한 경우에만 페이지 새로고침
         if (totalSuccess > 0) {
           console.log('[blog-records] 페이지 새로고침 시작...');
+          // 마지막 업데이트 시간 갱신 (state와 localStorage 모두)
+          const updateTime = new Date().toISOString();
+          setLastUpdateTime(updateTime);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rankingLastUpdateTime', updateTime);
+            // 커스텀 이벤트 발생 (같은 탭에서도 업데이트 알림)
+            window.dispatchEvent(new Event('rankingUpdated'));
+          }
           // 약간의 지연 후 새로고침 (DB 업데이트가 완료될 시간 확보)
           await new Promise(resolve => setTimeout(resolve, 1000));
           router.refresh();

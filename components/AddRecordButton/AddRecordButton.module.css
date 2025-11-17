@@ -1,7 +1,25 @@
 .buttonContainer {
   margin-bottom: 24px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.updateInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.updateLabel {
+  font-weight: 500;
+}
+
+.updateTime {
+  font-weight: 600;
+  color: #374151;
 }
 
 .addButton {
