@@ -129,7 +129,8 @@ function collectEntryIdentifiers(entry: Awaited<ReturnType<typeof fetchNaverRank
   if (entry.link) {
     try {
       const url = new URL(entry.link);
-      if (url.hostname === 'blog.naver.com') {
+      // blog.naver.com과 cafe.naver.com 모두 처리
+      if (url.hostname === 'blog.naver.com' || url.hostname === 'cafe.naver.com') {
         const segments = url.pathname.split('/').filter(Boolean);
         if (segments[0]) addIdentifier(segments[0]);
         const queryId = url.searchParams.get('blogId');
@@ -250,19 +251,40 @@ export async function GET(request: NextRequest) {
         
         // record의 identifier 수집
         const recordIdentifiers = collectRecordIdentifiers(record);
+        console.log(`[ranking] ${record.keyword} - record identifiers:`, recordIdentifiers);
+        console.log(`[ranking] ${record.keyword} - record data:`, {
+          id: record.id,
+          author: record.author,
+          title: record.title,
+          link: record.link,
+        });
         
         // entries에서 매칭되는 항목 찾기
         let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
         for (const entry of entries) {
           const entryIdentifiers = collectEntryIdentifiers(entry);
+          console.log(`[ranking] ${record.keyword} - entry rank ${entry.rank} identifiers:`, entryIdentifiers);
+          console.log(`[ranking] ${record.keyword} - entry data:`, {
+            rank: entry.rank,
+            blogId: entry.blogId,
+            nickname: entry.nickname,
+            title: entry.title,
+            link: entry.link,
+          });
           const matchResult = findMatch(entryIdentifiers, recordIdentifiers);
           if (matchResult) {
+            console.log(`[ranking] ${record.keyword} - 매칭 성공! rank: ${entry.rank}, identifier: ${matchResult.identifier}`);
             matched = entry;
             break;
+          } else {
+            console.log(`[ranking] ${record.keyword} - rank ${entry.rank} 매칭 실패`);
           }
         }
 
         const rank = matched ? matched.rank : null;
+        if (!matched) {
+          console.warn(`[ranking] ${record.keyword} - 매칭된 항목 없음. entries 개수: ${entries.length}`);
+        }
 
         // 2. 검색량 가져오기 (타임아웃 10초)
         let searchVolume: number | null = null;
