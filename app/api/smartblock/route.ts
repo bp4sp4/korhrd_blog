@@ -509,6 +509,11 @@ async function scrapeSmartBlocks(
 
           const blogId = extractBlogId(profileLink) || extractBlogId(link);
 
+          // ader.naver.com/v1/ 링크 제외
+          if (link && link.startsWith('https://ader.naver.com/v1/')) {
+            return;
+          }
+
           if (title) {
             items.push({
               index: itemIndex + 1,
@@ -638,6 +643,11 @@ async function scrapeSmartBlocks(
               }
 
               const blogId = extractBlogId(profileLink) || extractBlogId(link);
+
+              // ader.naver.com/v1/ 링크 제외
+              if (link && link.startsWith('https://ader.naver.com/v1/')) {
+                return;
+              }
 
               // 블로그/카페 링크가 있거나 제목이 있으면 수집
               if (title && (link || blogId)) {

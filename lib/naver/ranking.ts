@@ -916,7 +916,6 @@ export async function fetchNaverRanking(
 
   if (smartBlockModules.length > 0) {
     smartBlockModules.each((idx, element) => {
-      const rank = idx + 1;
       const profileAnchor = $(element).find('a.fds-thumb-anchor').first();
       const profileHref = profileAnchor.attr('href') ?? '';
       let blogId = extractBlogId(profileHref);
@@ -943,6 +942,11 @@ export async function fetchNaverRanking(
         .first();
       const snippet = snippetElement.text().trim() || undefined;
 
+      // ader.naver.com/v1/ 링크 제외
+      if (articleHref && articleHref.startsWith('https://ader.naver.com/v1/')) {
+        return;
+      }
+
       result.push({
         keyword,
         blogId,
@@ -950,14 +954,13 @@ export async function fetchNaverRanking(
         link: articleHref,
         nickname,
         snippet,
-        rank,
+        rank: 0, // 나중에 재계산
       });
     });
   }
 
   if (result.length === 0) {
     $('.sds-comps-vertical-layout[data-template-id="ugcItem"]').each((idx, element) => {
-      const rank = idx + 1;
       const profileAnchor = $(element).find('a.jyxwDwu8umzdhCQxX48l').first();
       const titleElement = $(element).find('.sds-comps-text-type-headline1').first();
       const link = profileAnchor.attr('href') ?? '';
@@ -969,15 +972,25 @@ export async function fetchNaverRanking(
         return;
       }
 
+      // ader.naver.com/v1/ 링크 제외
+      if (link && link.startsWith('https://ader.naver.com/v1/')) {
+        return;
+      }
+
       result.push({
         keyword,
         blogId,
         title,
         link,
-        rank,
+        rank: 0, // 나중에 재계산
       });
     });
   }
+
+  // 필터링 후 순위 재계산 (1부터 시작)
+  result.forEach((item, index) => {
+    item.rank = index + 1;
+  });
 
   return result;
 }

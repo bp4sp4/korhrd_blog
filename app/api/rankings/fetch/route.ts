@@ -464,13 +464,6 @@ async function fetchSmartblockEntries(
       (block: any) => block?.title && block.title.includes('일반 검색 결과')
     );
 
-    // 스마트블록의 총 아이템 수 계산 (일반 검색 결과의 rank 오프셋 계산용)
-    let smartBlockItemCount = 0;
-    for (const block of smartBlockBlocks) {
-      const items = Array.isArray(block?.data) ? block.data : [];
-      smartBlockItemCount += items.length;
-    }
-
     // 1. 스마트블록 처리
     for (const block of smartBlockBlocks) {
       const items = Array.isArray(block?.data) ? block.data : [];
@@ -505,17 +498,25 @@ async function fetchSmartblockEntries(
         const snippet =
           typeof item?.content === 'string' ? item.content.trim() : undefined;
 
+        // ader.naver.com/v1/ 링크 제외
+        if (link && link.startsWith('https://ader.naver.com/v1/')) {
+          return;
+        }
+
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: index + 1, // 스마트블록 내 순위
+          rank: 0, // 나중에 재계산
           nickname,
           snippet,
         });
       });
     }
+
+    // 스마트블록에서 필터링 후 실제 추가된 항목 수 계산 (일반 검색 결과의 rank 오프셋 계산용)
+    const smartBlockItemCount = results.length;
 
     // 2. 일반 검색 결과 처리 (스마트블록이 없으면 1등부터, 있으면 스마트블록 다음 순위부터)
     for (const block of generalSearchBlocks) {
@@ -551,20 +552,27 @@ async function fetchSmartblockEntries(
         const snippet =
           typeof item?.content === 'string' ? item.content.trim() : undefined;
 
-        // 일반 검색 결과의 rank: 스마트블록이 없으면 1등부터, 있으면 스마트블록 다음 순위부터
-        const rank = smartBlockItemCount === 0 ? index + 1 : smartBlockItemCount + index + 1;
+        // ader.naver.com/v1/ 링크 제외
+        if (link && link.startsWith('https://ader.naver.com/v1/')) {
+          return;
+        }
 
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank,
+          rank: 0, // 나중에 재계산
           nickname,
           snippet,
         });
       });
     }
+
+    // 필터링 후 순위 재계산 (1부터 시작)
+    results.forEach((result, index) => {
+      result.rank = index + 1;
+    });
 
       return results;
     } catch (fetchError: any) {

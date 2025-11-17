@@ -88,8 +88,8 @@
   padding: 6px 12px;
   border: none;
   border-radius: 9999px;
-  background-color: var(--color-green-primary);
-  color: #ffffff;
+  background-color: #f3f4f6;
+  color: black;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;

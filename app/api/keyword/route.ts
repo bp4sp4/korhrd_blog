@@ -92,43 +92,58 @@ async function fetchNaverSearchResults(
       const data = await response.json();
       const items = data.items || [];
 
-      // API 응답을 표준 형식으로 변환
-      const formattedResults = items.map((item: any, index: number) => {
-        // 제목에서 HTML 태그 제거
-        const title = item.title?.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') || '';
-        const description = item.description?.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') || '';
-        
-        // 블로그/카페글의 경우 bloggerlink에서 아이디 추출
-        let id = '';
-        let nickname = '';
-        if (item.bloggerlink) {
-          const match = item.bloggerlink.match(/blog\.naver\.com\/([^\/]+)/);
-          id = match ? match[1] : '';
-          nickname = item.bloggername || id;
-        } else if (item.cafename) {
-          id = item.cafename;
-          nickname = item.cafename;
-        }
+      // API 응답을 표준 형식으로 변환 (ader.naver.com/v1/ 링크 제외)
+      const formattedResults = items
+        .map((item: any, index: number) => {
+          // 제목에서 HTML 태그 제거
+          const title = item.title?.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') || '';
+          const description = item.description?.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') || '';
+          const link = item.link || item.originallink || '';
+          
+          // ader.naver.com/v1/ 링크 제외
+          if (link && link.startsWith('https://ader.naver.com/v1/')) {
+            return null;
+          }
+          
+          // 블로그/카페글의 경우 bloggerlink에서 아이디 추출
+          let id = '';
+          let nickname = '';
+          if (item.bloggerlink) {
+            const match = item.bloggerlink.match(/blog\.naver\.com\/([^\/]+)/);
+            id = match ? match[1] : '';
+            nickname = item.bloggername || id;
+          } else if (item.cafename) {
+            id = item.cafename;
+            nickname = item.cafename;
+          }
 
-        return {
-          rank: index + 1,
-          title: title,
-          id: id,
-          nickname: nickname,
-          index: apiType.key === 'blog' ? '블로그' : 
-                 apiType.key === 'news' ? '뉴스' :
-                 apiType.key === 'cafearticle' ? '카페' : '웹',
-          reliability: '',
-          publicationDate: item.postdate ? formatDate(item.postdate) : '',
-          charCount: description.length,
-          coreKeyword: keyword,
-          subKeyword: '',
-          imageCount: 0,
-          visitorCount: '',
-          diagnosis: '',
-          link: item.link || item.originallink || ''
-        };
-      });
+          return {
+            rank: 0, // 나중에 재계산
+            title: title,
+            id: id,
+            nickname: nickname,
+            index: apiType.key === 'blog' ? '블로그' : 
+                   apiType.key === 'news' ? '뉴스' :
+                   apiType.key === 'cafearticle' ? '카페' : '웹',
+            reliability: '',
+            publicationDate: item.postdate ? formatDate(item.postdate) : '',
+            charCount: description.length,
+            coreKeyword: keyword,
+            subKeyword: '',
+            imageCount: 0,
+            visitorCount: '',
+            diagnosis: '',
+            link: link
+          };
+        })
+        .filter((item: any) => item !== null) // 필터링된 항목 제거
+        .map((item: any, index: number) => {
+          // 필터링 후 순위 재계산 (1부터 시작)
+          return {
+            ...item,
+            rank: index + 1
+          };
+        });
 
       const tabName = apiType.key === 'blog' ? '블로그' : 
                      apiType.key === 'news' ? '뉴스' :
