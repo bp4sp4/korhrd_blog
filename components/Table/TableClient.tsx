@@ -89,6 +89,66 @@ export default function TableClient({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
 
+  // Supabase Realtime으로 마지막 업데이트 시간 구독
+  useEffect(() => {
+    if (data.length === 0) return;
+
+    const supabase = createClient();
+
+    // 초기값 가져오기 (record_activity_logs에서 가장 최근 랭킹 업데이트 시간)
+    const fetchLastUpdateTime = async () => {
+      const { data: logs, error } = await supabase
+        .from('record_activity_logs')
+        .select('created_at')
+        .eq('action', 'update')
+        .eq('actor_name', 'crawler')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!error && logs?.created_at) {
+        const updateTime = new Date(logs.created_at).toISOString();
+        setLastUpdateTime(updateTime);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('rankingLastUpdateTime', updateTime);
+        }
+      }
+    };
+
+    void fetchLastUpdateTime();
+
+    // Realtime 구독: record_activity_logs 테이블의 INSERT 이벤트 감지
+    const channel = supabase
+      .channel('ranking-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'record_activity_logs',
+          filter: 'action=eq.update',
+        },
+        (payload) => {
+          const newRecord = payload.new as { actor_name?: string; created_at?: string };
+          // crawler가 업데이트한 경우만 시간 갱신
+          if (newRecord.actor_name === 'crawler' && newRecord.created_at) {
+            const updateTime = new Date(newRecord.created_at).toISOString();
+            console.log('[TableClient] Realtime 업데이트 시간 변경:', updateTime);
+            setLastUpdateTime(updateTime);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('rankingLastUpdateTime', updateTime);
+              window.dispatchEvent(new Event('rankingUpdated'));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [data.length]);
+
   const logRecordActivity = async (
     action: 'create' | 'update' | 'delete',
     record: TableData,
@@ -536,17 +596,21 @@ export default function TableClient({
 
         console.log(`[blog-records] 전체 업데이트 완료: 총 ${ids.length}개 중 ${totalSuccess}개 성공, ${totalFailed}개 실패`);
 
+        // 랭킹 업데이트 실행 시 시간 기록 (성공 여부와 관계없이)
+        const updateTime = new Date().toISOString();
+        console.log('[blog-records] 랭킹 업데이트 시간 저장:', updateTime);
+        setLastUpdateTime(updateTime);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('rankingLastUpdateTime', updateTime);
+          console.log('[blog-records] localStorage에 저장 완료:', updateTime);
+          // 커스텀 이벤트 발생 (같은 탭에서도 업데이트 알림)
+          window.dispatchEvent(new Event('rankingUpdated'));
+          console.log('[blog-records] rankingUpdated 이벤트 발생');
+        }
+
         // 업데이트가 성공한 경우에만 페이지 새로고침
         if (totalSuccess > 0) {
           console.log('[blog-records] 페이지 새로고침 시작...');
-          // 마지막 업데이트 시간 갱신 (state와 localStorage 모두)
-          const updateTime = new Date().toISOString();
-          setLastUpdateTime(updateTime);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('rankingLastUpdateTime', updateTime);
-            // 커스텀 이벤트 발생 (같은 탭에서도 업데이트 알림)
-            window.dispatchEvent(new Event('rankingUpdated'));
-          }
           // 약간의 지연 후 새로고침 (DB 업데이트가 완료될 시간 확보)
           await new Promise(resolve => setTimeout(resolve, 1000));
           router.refresh();
