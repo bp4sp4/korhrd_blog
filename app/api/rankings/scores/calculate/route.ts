@@ -32,6 +32,29 @@ export async function POST(request: NextRequest) {
 
     console.log(`[calculate-scores] 대상 날짜: ${dateStr} (현재 KST 시간: ${kstHour}시)`);
 
+    // 매달 초기화: 매달 1일 오전 10시에 이전 달의 점수 삭제
+    if (targetDate.getDate() === 1 && kstHour >= 10) {
+      const previousMonth = new Date(targetDate);
+      previousMonth.setMonth(previousMonth.getMonth() - 1);
+      const previousMonthStart = new Date(previousMonth.getFullYear(), previousMonth.getMonth(), 1);
+      const previousMonthEnd = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
+      
+      const previousMonthStartStr = `${previousMonthStart.getFullYear()}-${String(previousMonthStart.getMonth() + 1).padStart(2, '0')}-${String(previousMonthStart.getDate()).padStart(2, '0')}`;
+      const previousMonthEndStr = `${previousMonthEnd.getFullYear()}-${String(previousMonthEnd.getMonth() + 1).padStart(2, '0')}-${String(previousMonthEnd.getDate()).padStart(2, '0')}`;
+
+      const { error: deletePreviousMonthError } = await adminClient
+        .from('daily_ranking_scores')
+        .delete()
+        .gte('date', previousMonthStartStr)
+        .lte('date', previousMonthEndStr);
+
+      if (deletePreviousMonthError) {
+        console.warn('[calculate-scores] 이전 달 점수 삭제 실패:', deletePreviousMonthError);
+      } else {
+        console.log(`[calculate-scores] 이전 달(${previousMonthStartStr} ~ ${previousMonthEndStr}) 점수 삭제 완료`);
+      }
+    }
+
     // blog_records에서 모든 레코드 가져오기 (ranking이 null이어도 미노출로 계산)
     const { data: records, error: recordsError } = await adminClient
       .from('blog_records')

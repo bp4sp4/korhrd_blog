@@ -95,7 +95,12 @@ export default function LoginPage() {
     <div className={styles.container}>
       <div className={styles.loginCard}>
         <div className={styles.logoContainer}>
-          <Link href="/"><div className={styles.img}><img src="/logo.png" alt="logo" /></div></Link>
+          <Link href="/">
+            <span className={styles.logoSpan}>
+              <img src="/logo_main.png" alt="logo" className={styles.logoImage} />
+              한평생 블매일
+            </span>
+          </Link>
         </div>
 
         <form onSubmit={handleLogin} className={styles.form}>

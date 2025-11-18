@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
       }));
     } else {
       // 일별 점수 조회 (이름별로 집계 - 모든 키워드의 점수 합산)
-      // 매일 오전 10시 기준으로 점수가 바뀌므로 해당 날짜의 점수만 조회
+      // 해당 날짜의 점수만 조회 (현재 달의 모든 날짜를 합산하지 않음)
       const { data, error } = await adminClient
         .from('daily_ranking_scores')
         .select('author_name, score, ranking_1_count, ranking_2_count, ranking_3_count, not_ranked_count, date, keyword')
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
-      // 이름별로 집계 (같은 날짜의 모든 키워드 점수 합산)
+      // 이름별로 집계 (해당 날짜의 모든 키워드 점수 합산)
       // 같은 날짜에 중복된 점수가 있을 수 있으므로, 같은 작성자+키워드 조합은 하나만 사용
       const seenKeys = new Set<string>();
       const scoreMap = new Map<string, {
