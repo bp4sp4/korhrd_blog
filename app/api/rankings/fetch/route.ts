@@ -21,6 +21,12 @@ function normalizeKeyword(value?: string | null): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+// 키워드 비교용: 띄어쓰기 제거
+function normalizeKeywordForComparison(value?: string | null): string {
+  if (!value) return '';
+  return value.replace(/\s+/g, '').toLowerCase();
+}
+
 function normalizeUrl(value?: string | null): string | null {
   if (!value) return null;
   try {
@@ -69,10 +75,10 @@ function collectRecordIdentifiers(record: BlogRecord): string[] {
     identifiers.add(normalizedAuthor);
   }
 
-  // keyword도 identifier에 추가 (키워드 매칭을 위해)
-  const normalizedKeyword = normalizeKeyword(record.keyword);
+  // keyword도 identifier에 추가 (키워드 매칭을 위해 - 띄어쓰기 제거)
+  const normalizedKeyword = normalizeKeywordForComparison(record.keyword);
   if (normalizedKeyword) {
-    identifiers.add(normalizedKeyword.toLowerCase());
+    identifiers.add(normalizedKeyword);
   }
 
   const normalizedTitle = normalizeText(record.title);
@@ -132,11 +138,11 @@ function collectEntryIdentifiers(entry: Awaited<ReturnType<typeof fetchNaverRank
 
   if (entry.nickname) addIdentifier(entry.nickname);
   
-  // keyword도 identifier에 추가 (키워드 매칭을 위해)
+  // keyword도 identifier에 추가 (키워드 매칭을 위해 - 띄어쓰기 제거)
   if (entry.keyword) {
-    const normalizedKeyword = normalizeKeyword(entry.keyword);
+    const normalizedKeyword = normalizeKeywordForComparison(entry.keyword);
     if (normalizedKeyword) {
-      identifiers.add(normalizedKeyword.toLowerCase());
+      identifiers.add(normalizedKeyword);
     }
   }
   
@@ -311,18 +317,18 @@ export async function GET(request: NextRequest) {
         });
         
         // entries에서 매칭되는 항목 찾기
-        // 키워드 정규화 (비교를 위해)
-        const normalizedRecordKeyword = normalizeKeyword(record.keyword).toLowerCase();
+        // 키워드 정규화 (비교를 위해 - 띄어쓰기 제거)
+        const normalizedRecordKeyword = normalizeKeywordForComparison(record.keyword);
         
         let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
         for (const entry of entries) {
-          // 키워드가 일치하는지 먼저 확인 (더 정확한 매칭을 위해)
-          const normalizedEntryKeyword = entry.keyword ? normalizeKeyword(entry.keyword).toLowerCase() : '';
+          // 키워드가 일치하는지 먼저 확인 (더 정확한 매칭을 위해 - 띄어쓰기 제거하여 비교)
+          const normalizedEntryKeyword = normalizeKeywordForComparison(entry.keyword);
           const keywordMatches = normalizedEntryKeyword === normalizedRecordKeyword;
           
           // 키워드가 일치하지 않으면 스킵 (같은 키워드로 검색했으므로 일치해야 함)
           if (!keywordMatches && normalizedEntryKeyword) {
-            console.log(`[ranking] ${record.keyword} - rank ${entry.rank} 키워드 불일치 (entry: ${entry.keyword})`);
+            console.log(`[ranking] ${record.keyword} - rank ${entry.rank} 키워드 불일치 (record: "${record.keyword}" -> "${normalizedRecordKeyword}", entry: "${entry.keyword}" -> "${normalizedEntryKeyword}")`);
             continue;
           }
           
