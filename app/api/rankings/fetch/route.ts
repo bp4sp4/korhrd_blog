@@ -63,9 +63,16 @@ function collectRecordIdentifiers(record: BlogRecord): string[] {
     identifiers.add(normalizedId);
   }
 
+  // author는 한글도 포함할 수 있으므로 정규식 제한 제거
   const normalizedAuthor = record.author?.trim().toLowerCase();
-  if (normalizedAuthor && /^[a-z0-9_\-]+$/.test(normalizedAuthor)) {
+  if (normalizedAuthor) {
     identifiers.add(normalizedAuthor);
+  }
+
+  // keyword도 identifier에 추가 (키워드 매칭을 위해)
+  const normalizedKeyword = normalizeKeyword(record.keyword);
+  if (normalizedKeyword) {
+    identifiers.add(normalizedKeyword.toLowerCase());
   }
 
   const normalizedTitle = normalizeText(record.title);
@@ -124,7 +131,18 @@ function collectEntryIdentifiers(entry: Awaited<ReturnType<typeof fetchNaverRank
   if (blogIdFromLink) addIdentifier(blogIdFromLink);
 
   if (entry.nickname) addIdentifier(entry.nickname);
-  if (entry.title) addIdentifier(entry.title);
+  
+  // keyword도 identifier에 추가 (키워드 매칭을 위해)
+  if (entry.keyword) {
+    const normalizedKeyword = normalizeKeyword(entry.keyword);
+    if (normalizedKeyword) {
+      identifiers.add(normalizedKeyword.toLowerCase());
+    }
+  }
+  
+  // 제목도 normalizeText로 처리하여 record와 일치시킴
+  const normalizedTitle = normalizeText(entry.title);
+  if (normalizedTitle) identifiers.add(normalizedTitle);
 
   if (entry.link) {
     try {
@@ -146,20 +164,53 @@ function collectEntryIdentifiers(entry: Awaited<ReturnType<typeof fetchNaverRank
 
 function findMatch(
   entryIdentifiers: string[],
-  recordIdentifiers: string[]
+  recordIdentifiers: string[],
+  recordKeyword?: string
 ): { identifier: string } | null {
+  // 1. 키워드가 정확히 일치하는 경우 최우선 매칭 (키워드가 있으면)
+  if (recordKeyword) {
+    const keywordMatch = entryIdentifiers.find(id => id === recordKeyword);
+    if (keywordMatch && recordIdentifiers.includes(recordKeyword)) {
+      // 키워드가 일치하고, 다른 identifier도 일치하는지 확인
+      for (const recordId of recordIdentifiers) {
+        if (!recordId || recordId === recordKeyword) continue;
+        if (entryIdentifiers.some((candidate) => candidate === recordId)) {
+          return { identifier: recordId }; // 키워드 + 다른 identifier 일치
+        }
+      }
+    }
+  }
+  
+  // 2. 정확히 일치하는 경우 (우선순위 높음)
   for (const recordId of recordIdentifiers) {
     if (!recordId) continue;
     if (entryIdentifiers.some((candidate) => candidate === recordId)) {
       return { identifier: recordId };
     }
+  }
+  
+  // 3. blogId나 id 같은 짧은 식별자는 정확히 일치해야 함
+  for (const recordId of recordIdentifiers) {
+    if (!recordId) continue;
+    // 짧은 식별자(blogId/id)는 정확히 일치해야 함
+    if (recordId.length <= 20 && /^[a-z0-9_\-]+$/.test(recordId)) {
+      if (entryIdentifiers.some((candidate) => candidate === recordId)) {
+        return { identifier: recordId };
+      }
+    }
+  }
+  
+  // 4. 긴 식별자(제목, URL 등)는 포함 관계로 매칭
+  for (const recordId of recordIdentifiers) {
+    if (!recordId) continue;
     if (
       recordId.length >= 5 &&
-      entryIdentifiers.some((candidate) => candidate.includes(recordId))
+      entryIdentifiers.some((candidate) => candidate.includes(recordId) || recordId.includes(candidate))
     ) {
       return { identifier: recordId };
     }
   }
+  
   return null;
 }
 
@@ -260,8 +311,21 @@ export async function GET(request: NextRequest) {
         });
         
         // entries에서 매칭되는 항목 찾기
+        // 키워드 정규화 (비교를 위해)
+        const normalizedRecordKeyword = normalizeKeyword(record.keyword).toLowerCase();
+        
         let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
         for (const entry of entries) {
+          // 키워드가 일치하는지 먼저 확인 (더 정확한 매칭을 위해)
+          const normalizedEntryKeyword = entry.keyword ? normalizeKeyword(entry.keyword).toLowerCase() : '';
+          const keywordMatches = normalizedEntryKeyword === normalizedRecordKeyword;
+          
+          // 키워드가 일치하지 않으면 스킵 (같은 키워드로 검색했으므로 일치해야 함)
+          if (!keywordMatches && normalizedEntryKeyword) {
+            console.log(`[ranking] ${record.keyword} - rank ${entry.rank} 키워드 불일치 (entry: ${entry.keyword})`);
+            continue;
+          }
+          
           const entryIdentifiers = collectEntryIdentifiers(entry);
           console.log(`[ranking] ${record.keyword} - entry rank ${entry.rank} identifiers:`, entryIdentifiers);
           console.log(`[ranking] ${record.keyword} - entry data:`, {
@@ -270,8 +334,9 @@ export async function GET(request: NextRequest) {
             nickname: entry.nickname,
             title: entry.title,
             link: entry.link,
+            keyword: entry.keyword,
           });
-          const matchResult = findMatch(entryIdentifiers, recordIdentifiers);
+          const matchResult = findMatch(entryIdentifiers, recordIdentifiers, normalizedRecordKeyword);
           if (matchResult) {
             console.log(`[ranking] ${record.keyword} - 매칭 성공! rank: ${entry.rank}, identifier: ${matchResult.identifier}`);
             matched = entry;
@@ -615,4 +680,5 @@ async function fetchSmartblockEntries(
     return [];
   }
 }
+
 
