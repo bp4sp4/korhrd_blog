@@ -106,11 +106,51 @@ export default function TableClient({
         .limit(1)
         .single();
 
+      let lastUpdateTime: string | null = null;
+      
       if (!error && logs?.created_at) {
-        const updateTime = new Date(logs.created_at).toISOString();
-        setLastUpdateTime(updateTime);
+        lastUpdateTime = new Date(logs.created_at).toISOString();
+        console.log('[TableClient] DB에서 가져온 업데이트 시간:', lastUpdateTime);
+      } else {
+        // DB에 값이 없으면 localStorage 확인
         if (typeof window !== 'undefined') {
-          localStorage.setItem('rankingLastUpdateTime', updateTime);
+          const stored = localStorage.getItem('rankingLastUpdateTime');
+          if (stored) {
+            lastUpdateTime = stored;
+            console.log('[TableClient] localStorage에서 가져온 업데이트 시간:', lastUpdateTime);
+          }
+        }
+      }
+
+      // 마지막 업데이트 시간이 1시간 이상 지났다면 현재 시간으로 갱신
+      if (lastUpdateTime) {
+        const lastUpdate = new Date(lastUpdateTime).getTime();
+        const now = new Date().getTime();
+        const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
+        
+        if (hoursSinceUpdate >= 1) {
+          // 1시간 이상 지났다면 현재 시간으로 갱신
+          const currentTime = new Date().toISOString();
+          console.log('[TableClient] 1시간 이상 지나서 현재 시간으로 갱신:', currentTime);
+          setLastUpdateTime(currentTime);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rankingLastUpdateTime', currentTime);
+            window.dispatchEvent(new Event('rankingUpdated'));
+          }
+        } else {
+          setLastUpdateTime(lastUpdateTime);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rankingLastUpdateTime', lastUpdateTime);
+          }
+        }
+      } else {
+        // 아무 값도 없으면 현재 시간으로 설정
+        const currentTime = new Date().toISOString();
+        console.log('[TableClient] 초기 시간 설정:', currentTime);
+        setLastUpdateTime(currentTime);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('rankingLastUpdateTime', currentTime);
+          window.dispatchEvent(new Event('rankingUpdated'));
         }
       }
     };
@@ -144,8 +184,20 @@ export default function TableClient({
       )
       .subscribe();
 
+    // 1시간마다 마지막 업데이트 시간 자동 갱신 (랭킹 업데이트 여부와 관계없이)
+    const updateTimeInterval = setInterval(() => {
+      const currentTime = new Date().toISOString();
+      console.log('[TableClient] 1시간마다 자동 시간 갱신:', currentTime);
+      setLastUpdateTime(currentTime);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rankingLastUpdateTime', currentTime);
+        window.dispatchEvent(new Event('rankingUpdated'));
+      }
+    }, 3600000); // 1시간 = 3600000ms
+
     return () => {
       void supabase.removeChannel(channel);
+      clearInterval(updateTimeInterval);
     };
   }, [data.length]);
 

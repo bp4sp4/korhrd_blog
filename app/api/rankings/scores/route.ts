@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const dateParam = searchParams.get('date'); // YYYY-MM-DD 형식
     const periodParam = searchParams.get('period'); // 'day' | 'month'
     
-    // 한국 시간(KST) 기준으로 오후 6시 기준 날짜 계산
+    // 한국 시간(KST) 기준으로 오전 10시 기준 날짜 계산
     const now = new Date();
     const kstFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Seoul',
@@ -25,9 +25,9 @@ export async function GET(request: NextRequest) {
     const kstMonth = parseInt(kstParts.find(p => p.type === 'month')?.value || '0', 10);
     const kstDay = parseInt(kstParts.find(p => p.type === 'day')?.value || '0', 10);
 
-    // 오후 6시 기준 날짜 계산 (18시 이전이면 전날)
+    // 오전 10시 기준 날짜 계산 (10시 이전이면 전날)
     let targetDate = new Date(kstYear, kstMonth - 1, kstDay);
-    if (kstHour < 18) {
+    if (kstHour < 10) {
       targetDate.setDate(targetDate.getDate() - 1);
     }
 
@@ -109,6 +109,7 @@ export async function GET(request: NextRequest) {
       }));
     } else {
       // 일별 점수 조회 (이름별로 집계 - 모든 키워드의 점수 합산)
+      // 매일 오전 10시 기준으로 점수가 바뀌므로 해당 날짜의 점수만 조회
       const { data, error } = await adminClient
         .from('daily_ranking_scores')
         .select('author_name, score, ranking_1_count, ranking_2_count, ranking_3_count, not_ranked_count, date, keyword')
@@ -120,6 +121,8 @@ export async function GET(request: NextRequest) {
       }
 
       // 이름별로 집계 (같은 날짜의 모든 키워드 점수 합산)
+      // 같은 날짜에 중복된 점수가 있을 수 있으므로, 같은 작성자+키워드 조합은 하나만 사용
+      const seenKeys = new Set<string>();
       const scoreMap = new Map<string, {
         author_name: string;
         total_score: number;
@@ -132,6 +135,15 @@ export async function GET(request: NextRequest) {
 
       (data || []).forEach((row: any) => {
         const authorName = row.author_name;
+        const keyword = row.keyword || '';
+        const uniqueKey = `${authorName}|${keyword}`;
+        
+        // 같은 작성자+키워드 조합이 이미 처리되었으면 스킵 (중복 방지)
+        if (seenKeys.has(uniqueKey)) {
+          return;
+        }
+        seenKeys.add(uniqueKey);
+        
         if (!scoreMap.has(authorName)) {
           scoreMap.set(authorName, {
             author_name: authorName,
@@ -150,8 +162,8 @@ export async function GET(request: NextRequest) {
         entry.total_ranking_2_count += row.ranking_2_count || 0;
         entry.total_ranking_3_count += row.ranking_3_count || 0;
         entry.total_not_ranked_count += row.not_ranked_count || 0;
-        if (row.keyword) {
-          entry.keywords.add(row.keyword);
+        if (keyword) {
+          entry.keywords.add(keyword);
         }
       });
 

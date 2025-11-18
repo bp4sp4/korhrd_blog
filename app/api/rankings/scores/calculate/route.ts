@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     const adminClient = createAdminClient();
 
-    // 한국 시간(KST) 기준으로 오후 6시 기준 날짜 계산
+    // 한국 시간(KST) 기준으로 오전 10시 기준 날짜 계산
     const now = new Date();
     const kstFormatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Seoul',
@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
     const kstMonth = parseInt(kstParts.find(p => p.type === 'month')?.value || '0', 10);
     const kstDay = parseInt(kstParts.find(p => p.type === 'day')?.value || '0', 10);
 
-    // 오후 6시 기준 날짜 계산 (18시 이전이면 전날)
+    // 오전 10시 기준 날짜 계산 (10시 이전이면 전날)
     let targetDate = new Date(kstYear, kstMonth - 1, kstDay);
-    if (kstHour < 18) {
+    if (kstHour < 10) {
       targetDate.setDate(targetDate.getDate() - 1);
     }
 
@@ -32,11 +32,10 @@ export async function POST(request: NextRequest) {
 
     console.log(`[calculate-scores] 대상 날짜: ${dateStr} (현재 KST 시간: ${kstHour}시)`);
 
-    // blog_records에서 ranking이 있는 모든 레코드 가져오기
+    // blog_records에서 모든 레코드 가져오기 (ranking이 null이어도 미노출로 계산)
     const { data: records, error: recordsError } = await adminClient
       .from('blog_records')
-      .select('id, keyword, ranking, author')
-      .not('ranking', 'is', null);
+      .select('id, keyword, ranking, author');
 
     if (recordsError) {
       console.error('[calculate-scores] blog_records 조회 실패', recordsError);
@@ -54,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[calculate-scores] 처리할 레코드 수: ${records.length}개`);
 
-    // 작성자별, 키워드별로 점수 집계
+    // 작성자별, 키워드별로 점수 집계 (각 글마다 개별 계산 - 같은 키워드의 여러 글도 모두 합산)
     const scoreMap = new Map<string, {
       author_name: string;
       keyword: string;
@@ -65,13 +64,13 @@ export async function POST(request: NextRequest) {
       not_ranked_count: number;
     }>();
 
+    // 각 레코드를 개별적으로 계산 (같은 키워드의 여러 글도 모두 합산)
     records.forEach((record) => {
       const authorName = record.author?.trim() || record.id || 'unknown';
       const keyword = record.keyword?.trim() || '';
-      const ranking = record.ranking || 0;
+      const ranking = record.ranking;
 
-      if (ranking <= 0) return; // 랭킹이 0 이하면 스킵
-
+      // 키워드별로 집계 (같은 키워드의 여러 레코드는 모두 합산)
       const key = `${authorName}|${keyword}`;
 
       if (!scoreMap.has(key)) {
@@ -88,25 +87,37 @@ export async function POST(request: NextRequest) {
 
       const entry = scoreMap.get(key)!;
 
-      // 점수 계산 (금메달 5점, 은메달 3점, 동메달 2점, 미노출 1점)
-      if (ranking === 1) {
+      // 각 글마다 개별적으로 점수 추가 (ranking이 null이거나 0이면 미노출로 계산)
+      if (ranking === null || ranking === 0 || ranking > 3) {
+        entry.score += 1;
+        entry.not_ranked_count += 1;
+      } else if (ranking === 1) {
         entry.score += 5;
         entry.ranking_1_count += 1;
       } else if (ranking === 2) {
         entry.score += 3;
         entry.ranking_2_count += 1;
       } else if (ranking === 3) {
-        entry.score += 2;
+        entry.score += 2; // 동메달 2점
         entry.ranking_3_count += 1;
-      } else {
-        entry.score += 1;
-        entry.not_ranked_count += 1;
       }
     });
 
     console.log(`[calculate-scores] 집계된 항목 수: ${scoreMap.size}개`);
 
-    // daily_ranking_scores 테이블에 upsert
+    // 해당 날짜의 기존 점수 삭제 (중복 방지)
+    const { error: deleteError } = await adminClient
+      .from('daily_ranking_scores')
+      .delete()
+      .eq('date', dateStr);
+
+    if (deleteError) {
+      console.warn('[calculate-scores] 기존 점수 삭제 실패 (계속 진행):', deleteError);
+    } else {
+      console.log(`[calculate-scores] ${dateStr} 날짜의 기존 점수 삭제 완료`);
+    }
+
+    // daily_ranking_scores 테이블에 새로 계산된 점수 저장
     const scoresToUpsert = Array.from(scoreMap.values()).map(entry => ({
       author_name: entry.author_name,
       date: dateStr,
@@ -118,16 +129,18 @@ export async function POST(request: NextRequest) {
       not_ranked_count: entry.not_ranked_count,
     }));
 
-    const { error: upsertError } = await adminClient
-      .from('daily_ranking_scores')
-      .upsert(scoresToUpsert, {
-        onConflict: 'author_name,date,keyword',
-        ignoreDuplicates: false,
-      });
+    // 빈 배열이 아닐 때만 insert 실행
+    if (scoresToUpsert.length > 0) {
+      const { error: upsertError } = await adminClient
+        .from('daily_ranking_scores')
+        .insert(scoresToUpsert);
 
-    if (upsertError) {
-      console.error('[calculate-scores] daily_ranking_scores 업데이트 실패', upsertError);
-      return NextResponse.json({ error: upsertError.message }, { status: 500 });
+      if (upsertError) {
+        console.error('[calculate-scores] daily_ranking_scores 업데이트 실패', upsertError);
+        return NextResponse.json({ error: upsertError.message }, { status: 500 });
+      }
+    } else {
+      console.log('[calculate-scores] 저장할 점수가 없습니다.');
     }
 
     // 작성자별 총점 집계

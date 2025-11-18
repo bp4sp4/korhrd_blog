@@ -47,17 +47,42 @@ export default function AddRecordButton({ currentUserId, currentUserName, userRo
           .limit(1)
           .single();
 
+        let lastUpdateTime: string | null = null;
+        
         if (!error && logs?.created_at) {
-          const updateTime = new Date(logs.created_at).toISOString();
-          console.log('[AddRecordButton] 초기 업데이트 시간:', updateTime);
-          setUpdateTime(updateTime);
-          localStorage.setItem('rankingLastUpdateTime', updateTime);
+          lastUpdateTime = new Date(logs.created_at).toISOString();
+          console.log('[AddRecordButton] DB에서 가져온 업데이트 시간:', lastUpdateTime);
         } else {
           // DB에 값이 없으면 localStorage 확인
           const stored = localStorage.getItem('rankingLastUpdateTime');
           if (stored) {
-            setUpdateTime(stored);
+            lastUpdateTime = stored;
+            console.log('[AddRecordButton] localStorage에서 가져온 업데이트 시간:', lastUpdateTime);
           }
+        }
+
+        // 마지막 업데이트 시간이 1시간 이상 지났다면 현재 시간으로 갱신
+        if (lastUpdateTime) {
+          const lastUpdate = new Date(lastUpdateTime).getTime();
+          const now = new Date().getTime();
+          const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
+          
+          if (hoursSinceUpdate >= 1) {
+            // 1시간 이상 지났다면 현재 시간으로 갱신
+            const currentTime = new Date().toISOString();
+            console.log('[AddRecordButton] 1시간 이상 지나서 현재 시간으로 갱신:', currentTime);
+            setUpdateTime(currentTime);
+            localStorage.setItem('rankingLastUpdateTime', currentTime);
+          } else {
+            setUpdateTime(lastUpdateTime);
+            localStorage.setItem('rankingLastUpdateTime', lastUpdateTime);
+          }
+        } else {
+          // 아무 값도 없으면 현재 시간으로 설정
+          const currentTime = new Date().toISOString();
+          console.log('[AddRecordButton] 초기 시간 설정:', currentTime);
+          setUpdateTime(currentTime);
+          localStorage.setItem('rankingLastUpdateTime', currentTime);
         }
       };
 
@@ -97,9 +122,20 @@ export default function AddRecordButton({ currentUserId, currentUserName, userRo
 
       window.addEventListener('rankingUpdated', handleCustomUpdate);
 
+      // 1시간마다 마지막 업데이트 시간 자동 갱신 (랭킹 업데이트 여부와 관계없이)
+      const updateTimeInterval = setInterval(() => {
+        const currentTime = new Date().toISOString();
+        console.log('[AddRecordButton] 1시간마다 자동 시간 갱신:', currentTime);
+        setUpdateTime(currentTime);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('rankingLastUpdateTime', currentTime);
+        }
+      }, 3600000); // 1시간 = 3600000ms
+
       return () => {
         void supabase.removeChannel(channel);
         window.removeEventListener('rankingUpdated', handleCustomUpdate);
+        clearInterval(updateTimeInterval);
       };
     }
   }, []); // 의존성 배열 비움 - 마운트 시 한 번만 실행
@@ -154,8 +190,10 @@ export default function AddRecordButton({ currentUserId, currentUserName, userRo
             // 점수 계산 후 순위 조회
             await fetchRankingScores();
           } else {
-            console.error('[AddRecordButton] 점수 계산 실패:', response.status);
-            // 실패해도 순위 조회는 진행
+            // 점수가 정상적으로 표시되면 에러는 조용히 처리
+            const errorData = await response.json().catch(() => ({}));
+            console.warn('[AddRecordButton] 점수 계산 실패 (기존 점수 사용):', response.status, errorData);
+            // 실패해도 순위 조회는 진행 (기존 점수 사용)
             await fetchRankingScores();
           }
         } catch (error: any) {
@@ -211,9 +249,9 @@ export default function AddRecordButton({ currentUserId, currentUserName, userRo
     }
   };
 
-  // 한국 시간(KST) 기준으로 오후 6시 기준 날짜 계산
+  // 한국 시간(KST) 기준으로 오전 10시 기준 날짜 계산
   const getCurrentDateLabel = () => {
-    return '오후 6시 기준으로';
+    return '오전 10시 기준으로';
   };
 
   return (
@@ -231,7 +269,13 @@ export default function AddRecordButton({ currentUserId, currentUserName, userRo
                 {rankingScores.slice(0, 3).map((score, index) => (
                   <span key={score.author_name} className={styles.rankingItemInline}>
                     <span className={styles.rankingRank}>
-                      {score.rank === 1 ? '🥇' : score.rank === 2 ? '🥈' : '🥉'}
+                      {score.rank === 1 ? (
+                        <img src="/goldmedal.png" alt="금메달" className={styles.rankingMedalImage} />
+                      ) : score.rank === 2 ? (
+                        <img src="/silvermedal.png" alt="은메달" className={styles.rankingMedalImage} />
+                      ) : (
+                        <img src="/bronzemedal.png" alt="동메달" className={styles.rankingMedalImage} />
+                      )}
                     </span>
                     <span className={styles.rankingScoreInline}>{score.total_score}점</span>
                     <span className={styles.rankingNameInline}>{score.author_name}</span>

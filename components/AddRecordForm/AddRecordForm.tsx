@@ -199,6 +199,20 @@ export default function AddRecordForm({
       setAutoSearchVolume(null);
       setIsFetchingSearchVolume(false);
 
+      // 블로그 작성 후 점수 자동 계산 (오전 10시 기준으로 합산)
+      try {
+        const calculateResponse = await fetch('/api/rankings/scores/calculate', {
+          method: 'POST',
+          cache: 'no-store',
+        });
+        if (calculateResponse.ok) {
+          console.log('[AddRecordForm] 블로그 작성 후 점수 계산 완료');
+        }
+      } catch (calcError) {
+        console.warn('[AddRecordForm] 점수 계산 중 오류:', calcError);
+        // 점수 계산 실패해도 기록 추가는 성공
+      }
+
       router.refresh();
       
       // 즉시 모달 닫기
