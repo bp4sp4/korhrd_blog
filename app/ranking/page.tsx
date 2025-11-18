@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import Pagination from '@/components/Pagination/Pagination';
 import styles from './page.module.css';
 
 interface RankingScore {
@@ -24,7 +25,7 @@ export default function RankingPage() {
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchName, setSearchName] = useState('');
-  const itemsPerPage = 20;
+  const itemsPerPage = 10;
 
   // 일별 랭킹 점수 조회
   const fetchRankingScores = async () => {
@@ -212,80 +213,15 @@ export default function RankingPage() {
         )}
 
         {/* 페이지네이션 */}
-        {!isLoading && filteredData.length > 0 && totalPages > 1 && (
-          <div className={styles.pagination}>
-            <div className={styles.paginationContainer}>
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className={styles.navButton}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="line-icon">
-                  <path
-                    d="M14.3 17.4c-.2 0-.5-.1-.6-.3l-4.5-4.5c-.4-.4-.4-.9 0-1.3l4.5-4.5c.4-.4.9-.4 1.3 0s.4.9 0 1.3L11 12l3.9 3.9c.4.4.4.9 0 1.3-.2.1-.4.2-.6.2z"
-                    fill="#a8b2bc"
-                  ></path>
-                </svg>
-              </button>
-
-              {/* 페이지 번호 */}
-              {(() => {
-                const startPage = Math.floor((currentPage - 1) / 10) * 10 + 1;
-                const endPage = Math.min(startPage + 9, totalPages);
-
-                return (
-                  <>
-                    {startPage > 1 && (
-                      <>
-                        <button
-                          onClick={() => handlePageChange(1)}
-                          className={`${styles.pageButton} ${styles.pageButtonInactive}`}
-                        >
-                          1
-                        </button>
-                        <span className={styles.ellipsis}>...</span>
-                      </>
-                    )}
-                    {Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i).map((page) => (
-                      <button
-                        key={page}
-                        onClick={() => handlePageChange(page)}
-                        className={`${styles.pageButton} ${
-                          currentPage === page ? styles.pageButtonActive : styles.pageButtonInactive
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
-                    {endPage < totalPages && (
-                      <>
-                        <span className={styles.ellipsis}>...</span>
-                        <button
-                          onClick={() => handlePageChange(totalPages)}
-                          className={`${styles.pageButton} ${styles.pageButtonInactive}`}
-                        >
-                          {totalPages}
-                        </button>
-                      </>
-                    )}
-                  </>
-                );
-              })()}
-
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className={styles.navButton}
-              >
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="m9.733 17.342c-.23 0-.46-.088-.636-.264-.352-.352-.352-.922 0-1.273l3.896-3.896-3.867-3.867c-.352-.351-.352-.921 0-1.272.352-.352.921-.352 1.272 0l4.504 4.503c.169.168.264.397.264.636s-.096.468-.264.636l-4.534 4.533c-.176.176-.406.264-.636.264z"
-                    fill="#b0b8c1"
-                  ></path>
-                </svg>
-              </button>
-            </div>
-          </div>
+        {!isLoading && filteredData.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalCount={filteredData.length}
+            pageSize={itemsPerPage}
+            onPageChange={handlePageChange}
+            showPageSizeSelector={false}
+          />
         )}
       </div>
     </div>

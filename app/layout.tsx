@@ -20,14 +20,14 @@ const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://korhrd-blog.vercel.app";
 
 export const metadata: Metadata = {
-  title: "한평생블로그",
-  description: "한평생블로그",
+  title: "한평생블매일",
+  description: "한평생블매일",
   metadataBase: new URL(siteUrl),
   openGraph: {
-    title: "한평생블로그",
-    description: "한평생블로그",
+    title: "한평생블매일",
+    description: "한평생블매일",
     url: siteUrl,
-    siteName: "한평생블로그",
+    siteName: "한평생블매일",
     images: [
       {
         url: "/share_img.png",
@@ -41,8 +41,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "한평생블로그",
-    description: "한평생블로그",
+    title: "한평생블매일",
+    description: "한평생블매일",
     images: ["/share_img.png"],
   },
 };
