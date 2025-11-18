@@ -31,6 +31,20 @@ function normalizeUrl(value?: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
+
+    // Naver 블로그 포스트 뷰 URL을 정규화 (blogId/logNo 형태로)
+    if (
+      url.hostname === 'blog.naver.com' &&
+      url.searchParams.has('blogId') &&
+      url.searchParams.has('logNo')
+    ) {
+      const blogId = url.searchParams.get('blogId');
+      const logNo = url.searchParams.get('logNo');
+      if (blogId && logNo) {
+        return `${url.hostname}/${blogId.toLowerCase()}/${logNo}`;
+      }
+    }
+
     const sanitizedPath = url.pathname.replace(/\/+$/, '');
     return `${url.hostname}${sanitizedPath}`;
   } catch {
@@ -42,6 +56,13 @@ function extractBlogIdFromUrl(value?: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
+
+    // query parameter에서 blogId 추출 (PostView.naver 등)
+    const blogIdParam = url.searchParams.get('blogId');
+    if (blogIdParam) {
+      return blogIdParam.trim().toLowerCase();
+    }
+
     if (!NAVER_HOSTS.includes(url.hostname)) {
       return null;
     }
@@ -322,12 +343,13 @@ export async function GET(request: NextRequest) {
         
         let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
         for (const entry of entries) {
-          // 키워드가 일치하는지 먼저 확인 (더 정확한 매칭을 위해 - 띄어쓰기 제거하여 비교)
+          // 키워드가 일치하는지 확인 (띄어쓰기 제거하여 비교)
+          // entry.keyword가 없거나 빈 문자열이면 같은 키워드로 검색한 결과이므로 통과
           const normalizedEntryKeyword = normalizeKeywordForComparison(entry.keyword);
-          const keywordMatches = normalizedEntryKeyword === normalizedRecordKeyword;
+          const keywordMatches = normalizedEntryKeyword === normalizedRecordKeyword || !normalizedEntryKeyword;
           
-          // 키워드가 일치하지 않으면 스킵 (같은 키워드로 검색했으므로 일치해야 함)
-          if (!keywordMatches && normalizedEntryKeyword) {
+          // 키워드가 있고 일치하지 않으면 스킵 (다른 키워드의 결과일 수 있음)
+          if (!keywordMatches) {
             console.log(`[ranking] ${record.keyword} - rank ${entry.rank} 키워드 불일치 (record: "${record.keyword}" -> "${normalizedRecordKeyword}", entry: "${entry.keyword}" -> "${normalizedEntryKeyword}")`);
             continue;
           }
