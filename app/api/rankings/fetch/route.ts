@@ -569,8 +569,12 @@ async function fetchSmartblockEntries(
       if (!value) return null;
       const trimmed = value.trim();
       if (!trimmed) return null;
-      const directMatch = trimmed.match(/blog\.naver\.com\/([^/?#]+)/);
-      if (directMatch) return directMatch[1].toLowerCase();
+      // blog.naver.com 매칭
+      const blogMatch = trimmed.match(/blog\.naver\.com\/([^/?#]+)/);
+      if (blogMatch) return blogMatch[1].toLowerCase();
+      // cafe.naver.com 매칭 (카페 이름 추출)
+      const cafeMatch = trimmed.match(/cafe\.naver\.com\/([^/?#]+)/);
+      if (cafeMatch) return cafeMatch[1].toLowerCase();
       const fromUrl = extractBlogIdFromUrl(trimmed);
       return fromUrl ? fromUrl.toLowerCase() : null;
     };
@@ -653,7 +657,10 @@ async function fetchSmartblockEntries(
     }
 
     // 2. 다른 스마트블록 처리 (인기글 블록 제외, 중복 제거)
+    // 인기글 블록이 없으면 첫 번째 블록의 index를 그대로 사용
     let otherBlockItemCount = 0; // 실제로 추가된 다른 블록 항목 수
+    let blockIndex = 0; // 블록 순서 추적
+    
     for (const block of smartBlockBlocks) {
       // 인기글 블록은 이미 처리했으므로 스킵
       if (block === popularBlock) {
@@ -661,7 +668,10 @@ async function fetchSmartblockEntries(
       }
 
       const items = Array.isArray(block?.data) ? block.data : [];
-      items.forEach((item: any, index: number) => {
+      const isFirstBlockWithoutPopular = !popularBlock && blockIndex === 0;
+      blockIndex++;
+      
+      items.forEach((item: any, forEachIndex: number) => {
         const rawBlogId =
           typeof item?.authorId === 'string'
             ? item.authorId
@@ -707,14 +717,22 @@ async function fetchSmartblockEntries(
         seenEntries.add(entryKey);
         otherBlockItemCount++;
 
-        // 다른 블록은 인기글 블록 다음 순위부터 시작 (실제 추가된 항목 수 기준)
-        const baseRank = popularBlock ? (Array.isArray(popularBlock?.data) ? popularBlock.data.length : 0) : 0;
+        // 첫 번째 블록이고 인기글 블록이 없으면 item.index를 그대로 사용 (1부터 시작)
+        // 그 외에는 인기글 블록 다음 순위부터 시작
+        let rank: number;
+        if (isFirstBlockWithoutPopular && typeof item?.index === 'number' && item.index > 0) {
+          rank = item.index; // item.index를 그대로 사용 (1, 2, 3...)
+        } else {
+          const baseRank = popularBlock ? (Array.isArray(popularBlock?.data) ? popularBlock.data.length : 0) : 0;
+          rank = baseRank + otherBlockItemCount;
+        }
+
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: baseRank + otherBlockItemCount,
+          rank,
           nickname,
           snippet,
         });
