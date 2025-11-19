@@ -575,6 +575,11 @@ async function fetchSmartblockEntries(
       return fromUrl ? fromUrl.toLowerCase() : null;
     };
 
+    // 인기글 블록 찾기
+    const popularBlock = smartBlocks.find(
+      (block: any) => block?.title && (block.title.includes('인기글') || (block.title.includes("'") && block.title.includes("' 인기글")))
+    );
+
     // 스마트블록과 일반 검색 결과를 구분
     const smartBlockBlocks = smartBlocks.filter(
       (block: any) => block?.title && !block.title.includes('일반 검색 결과')
@@ -583,8 +588,78 @@ async function fetchSmartblockEntries(
       (block: any) => block?.title && block.title.includes('일반 검색 결과')
     );
 
-    // 1. 스마트블록 처리
+    // 중복 체크를 위한 Set (link와 blogId/nickname 조합으로 중복 확인)
+    const seenEntries = new Set<string>();
+    const getEntryKey = (link: string, blogId: string, nickname: string): string => {
+      const normalizedLink = normalizeUrl(link)?.toLowerCase() || '';
+      const normalizedBlogId = blogId?.toLowerCase() || '';
+      const normalizedNickname = normalizeText(nickname) || '';
+      return `${normalizedLink}|${normalizedBlogId}|${normalizedNickname}`;
+    };
+
+    // 1. 인기글 블록 우선 처리 (블록 내 index를 그대로 rank로 사용)
+    if (popularBlock) {
+      const items = Array.isArray(popularBlock?.data) ? popularBlock.data : [];
+      items.forEach((item: any, index: number) => {
+        const rawBlogId =
+          typeof item?.authorId === 'string'
+            ? item.authorId
+            : typeof item?.blogId === 'string'
+            ? item.blogId
+            : undefined;
+        const blogId =
+          extractBlogId(rawBlogId) ??
+          extractBlogId(typeof item?.profileLink === 'string' ? item.profileLink : undefined) ??
+          extractBlogId(typeof item?.link === 'string' ? item.link : undefined);
+
+        const nicknameRaw =
+          typeof item?.author === 'string'
+            ? item.author
+            : typeof item?.nickname === 'string'
+            ? item.nickname
+            : undefined;
+        const nickname = nicknameRaw ? nicknameRaw.trim() : undefined;
+
+        if (!blogId && !nickname) {
+          return;
+        }
+
+        const title =
+          typeof item?.title === 'string' ? item.title.trim() : '';
+        const link =
+          typeof item?.link === 'string' ? item.link : '';
+        const snippet =
+          typeof item?.content === 'string' ? item.content.trim() : undefined;
+
+        // ader.naver.com/v1/ 링크 제외
+        if (link && link.startsWith('https://ader.naver.com/v1/')) {
+          return;
+        }
+
+        const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
+        seenEntries.add(entryKey);
+
+        // 인기글 블록의 index를 그대로 rank로 사용 (1부터 시작)
+        results.push({
+          keyword,
+          blogId: blogId ?? '',
+          title,
+          link,
+          rank: index + 1, // 블록 내 순위를 그대로 사용
+          nickname,
+          snippet,
+        });
+      });
+    }
+
+    // 2. 다른 스마트블록 처리 (인기글 블록 제외, 중복 제거)
+    let otherBlockItemCount = 0; // 실제로 추가된 다른 블록 항목 수
     for (const block of smartBlockBlocks) {
+      // 인기글 블록은 이미 처리했으므로 스킵
+      if (block === popularBlock) {
+        continue;
+      }
+
       const items = Array.isArray(block?.data) ? block.data : [];
       items.forEach((item: any, index: number) => {
         const rawBlogId =
@@ -622,24 +697,36 @@ async function fetchSmartblockEntries(
           return;
         }
 
+        const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
+        
+        // 인기글 블록에 이미 있는 항목은 스킵 (인기글 블록의 순위가 우선)
+        if (seenEntries.has(entryKey)) {
+          return;
+        }
+
+        seenEntries.add(entryKey);
+        otherBlockItemCount++;
+
+        // 다른 블록은 인기글 블록 다음 순위부터 시작 (실제 추가된 항목 수 기준)
+        const baseRank = popularBlock ? (Array.isArray(popularBlock?.data) ? popularBlock.data.length : 0) : 0;
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: 0, // 나중에 재계산
+          rank: baseRank + otherBlockItemCount,
           nickname,
           snippet,
         });
       });
     }
 
-    // 스마트블록에서 필터링 후 실제 추가된 항목 수 계산 (일반 검색 결과의 rank 오프셋 계산용)
-    const smartBlockItemCount = results.length;
-
-    // 2. 일반 검색 결과 처리 (스마트블록이 없으면 1등부터, 있으면 스마트블록 다음 순위부터)
+    // 3. 일반 검색 결과 처리 (중복 제거)
+    let generalSearchItemCount = 0; // 실제로 추가된 일반 검색 결과 항목 수
     for (const block of generalSearchBlocks) {
       const items = Array.isArray(block?.data) ? block.data : [];
+      const baseRank = results.length > 0 ? Math.max(...results.map(r => r.rank)) : 0;
+      
       items.forEach((item: any, index: number) => {
         const rawBlogId =
           typeof item?.authorId === 'string'
@@ -676,22 +763,27 @@ async function fetchSmartblockEntries(
           return;
         }
 
+        const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
+        
+        // 이미 처리된 항목은 스킵 (인기글 블록의 순위가 우선)
+        if (seenEntries.has(entryKey)) {
+          return;
+        }
+
+        seenEntries.add(entryKey);
+        generalSearchItemCount++;
+
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: 0, // 나중에 재계산
+          rank: baseRank + generalSearchItemCount,
           nickname,
           snippet,
         });
       });
     }
-
-    // 필터링 후 순위 재계산 (1부터 시작)
-    results.forEach((result, index) => {
-      result.rank = index + 1;
-    });
 
       return results;
     } catch (fetchError: any) {
