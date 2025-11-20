@@ -77,16 +77,33 @@ async function scrapeSmartBlocks(
     let launchOptions: any;
     if (isVercel) {
       try {
-        const executablePath = await lambdaChromium.executablePath();
-        console.log('[smartblock] @sparticuz/chromium executablePath 가져오기 성공');
+        // @sparticuz/chromium의 executablePath 가져오기
+        // Vercel Lambda 환경에서는 /tmp 디렉토리 사용
+        const executablePath = await lambdaChromium.executablePath('/tmp/chromium');
+        console.log('[smartblock] @sparticuz/chromium executablePath 가져오기 성공:', executablePath);
         launchOptions = {
           args: lambdaChromium.args,
           executablePath: executablePath,
           headless: true,
         };
       } catch (chromiumError: any) {
-        console.error('[smartblock] @sparticuz/chromium executablePath 가져오기 실패:', chromiumError?.message);
-        throw new Error(`Chromium 실행 파일 경로를 가져올 수 없습니다: ${chromiumError?.message}`);
+        console.error('[smartblock] @sparticuz/chromium executablePath 가져오기 실패:', {
+          error: chromiumError?.message,
+          stack: chromiumError?.stack,
+        });
+        // 기본 경로로 재시도
+        try {
+          const executablePath = await lambdaChromium.executablePath();
+          console.log('[smartblock] 기본 경로로 재시도 성공:', executablePath);
+          launchOptions = {
+            args: lambdaChromium.args,
+            executablePath: executablePath,
+            headless: true,
+          };
+        } catch (retryError: any) {
+          console.error('[smartblock] 재시도 실패:', retryError?.message);
+          throw new Error(`Chromium 실행 파일 경로를 가져올 수 없습니다: ${chromiumError?.message}`);
+        }
       }
     } else {
       launchOptions = {
