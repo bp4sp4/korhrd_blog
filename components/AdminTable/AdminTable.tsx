@@ -74,6 +74,7 @@ export default function AdminTable({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [refreshingRecords, setRefreshingRecords] = useState<Set<string>>(new Set());
   const [isBulkRefreshing, setIsBulkRefreshing] = useState(false);
+  const [isFullRefreshing, setIsFullRefreshing] = useState(false);
   const [refreshingSearchVolumes, setRefreshingSearchVolumes] = useState<Set<string>>(new Set());
   const [isBulkRefreshingSearchVolume, setIsBulkRefreshingSearchVolume] = useState(false);
 
@@ -454,8 +455,51 @@ export default function AdminTable({
     }
   };
 
+  // 전체 랭킹 재갱신 (모든 레코드)
+  const handleRefreshAllRankings = async () => {
+    if (isFullRefreshing || isBulkRefreshing) return;
+
+    const confirmMessage = `모든 레코드(${filteredData.length}개)의 순위를 갱신할까요? 이 작업은 시간이 오래 걸릴 수 있습니다.`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsFullRefreshing(true);
+    setError('');
+    setShowSuccessMessage(false);
+
+    try {
+      // limit 파라미터 없이 호출하면 모든 레코드 처리
+      const response = await fetch(`/api/rankings/fetch?limit=200`, {
+        method: 'GET',
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || '전체 순위 갱신 요청에 실패했습니다.');
+      }
+
+      // 응답 요약 정보 로깅
+      if (result?.summary) {
+        console.log('[AdminTable] 전체 랭킹 갱신 요약:', result.summary);
+        showTemporarySuccess(
+          `전체 랭킹 갱신 완료: ${result.summary.rankingUpdated || 0}개 순위, ${result.summary.searchVolumeUpdated || 0}개 검색량 갱신`
+        );
+      }
+
+      router.refresh();
+    } catch (bulkError: any) {
+      console.error('Failed to refresh all rankings', bulkError);
+      setError(bulkError?.message || '전체 순위 갱신 중 오류가 발생했습니다.');
+      setShowSuccessMessage(false);
+    } finally {
+      setIsFullRefreshing(false);
+    }
+  };
+
   const handleRefreshVisibleRankings = async () => {
-    if (isBulkRefreshing) return;
+    if (isBulkRefreshing || isFullRefreshing) return;
 
     const ids = Array.from(
       new Set(
@@ -941,8 +985,22 @@ export default function AdminTable({
                 <button
                   type="button"
                   className={styles.globalRefreshIconButton}
+                  onClick={handleRefreshAllRankings}
+                  disabled={isFullRefreshing || isBulkRefreshing}
+                  aria-label="전체 랭킹 재갱신"
+                  title={isFullRefreshing ? '전체 랭킹 갱신 중...' : '모든 레코드의 순위를 한 번에 갱신'}
+                  style={{ color: '#dc2626' }}
+                >
+                  <RefreshCw
+                    size={18}
+                    className={isFullRefreshing ? styles.iconSpinning : undefined}
+                  />
+                </button>
+                <button
+                  type="button"
+                  className={styles.globalRefreshIconButton}
                   onClick={handleRefreshVisibleRankings}
-                  disabled={isBulkRefreshing}
+                  disabled={isBulkRefreshing || isFullRefreshing}
                   aria-label="현재 페이지 순위 일괄 갱신"
                   title={isBulkRefreshing ? '순위 갱신 중...' : '현재 페이지 순위를 한 번에 갱신'}
                 >
