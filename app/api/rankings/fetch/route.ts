@@ -344,11 +344,15 @@ export async function GET(request: NextRequest) {
 
     const results = [];
 
+    console.log(`[ranking] 시작: ${records.length}개 레코드 처리`);
+    
     for (const record of records) {
       try {
+        console.log(`[ranking] 처리 중: ${record.keyword} (${record.id})`);
         // 1. 랭킹 가져오기 (타임아웃 60초)
         const timeout = 60000; // 60초
         const entries = await fetchSmartblockEntries(record.keyword, request, timeout);
+        console.log(`[ranking] 스마트블록 수집 완료: ${record.keyword} - ${entries.length}개 항목`);
         
         // record의 identifier 수집
         const recordIdentifiers = collectRecordIdentifiers(record);
@@ -551,14 +555,21 @@ export async function GET(request: NextRequest) {
       results,
     });
 
-    return NextResponse.json({
-      success: true,
-      updated: results,
-    });
+      return NextResponse.json({
+        success: true,
+        updated: results,
+      });
   } catch (error: any) {
-    console.error('[ranking] 업데이트 실패', error);
+    console.error('[ranking] 업데이트 실패', {
+      error: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
     return NextResponse.json(
-      { error: error?.message ?? '랭킹 수집 중 오류가 발생했습니다.' },
+      { 
+        error: error?.message ?? '랭킹 수집 중 오류가 발생했습니다.',
+        details: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
+      },
       { status: 500 }
     );
   }

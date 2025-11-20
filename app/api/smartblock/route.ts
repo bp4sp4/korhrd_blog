@@ -14,7 +14,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'keyword is required' }, { status: 400 });
     }
 
+    console.log(`[smartblock] 요청 시작: ${keyword} (Vercel: ${isVercel})`);
     const smartBlocks = await scrapeSmartBlocks(keyword, isVercel);
+    console.log(`[smartblock] 요청 완료: ${keyword} - 블록 개수: ${smartBlocks.length}`);
 
     return NextResponse.json({
       keyword,
@@ -23,7 +25,12 @@ export async function POST(request: NextRequest) {
       totalBlocks: smartBlocks.length,
     });
   } catch (error: any) {
-    console.error('[smartblock] failed to fetch', error);
+    console.error('[smartblock] failed to fetch', {
+      error: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+      isVercel,
+    });
     return NextResponse.json(
       {
         error: '스마트블록 데이터를 가져오지 못했습니다.',
@@ -54,10 +61,17 @@ async function scrapeSmartBlocks(
     // Vercel 환경: puppeteer-core + @sparticuz/chromium 사용
     // 로컬 환경: 일반 puppeteer 사용
     let puppeteerInstance: any;
-    if (isVercel) {
-      puppeteerInstance = (await import('puppeteer-core')).default;
-    } else {
-      puppeteerInstance = (await import('puppeteer')).default;
+    try {
+      if (isVercel) {
+        console.log('[smartblock] Vercel 환경: puppeteer-core 로드 중...');
+        puppeteerInstance = (await import('puppeteer-core')).default;
+      } else {
+        console.log('[smartblock] 로컬 환경: puppeteer 로드 중...');
+        puppeteerInstance = (await import('puppeteer')).default;
+      }
+    } catch (importError: any) {
+      console.error('[smartblock] Puppeteer 로드 실패:', importError?.message);
+      throw new Error(`Puppeteer 로드 실패: ${importError?.message}`);
     }
     
     const launchOptions = isVercel
@@ -71,12 +85,14 @@ async function scrapeSmartBlocks(
           args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
         };
     
-    console.log('[smartblock] 브라우저 실행 중...', { isVercel });
+    console.log('[smartblock] 브라우저 실행 중...', { isVercel, hasExecutablePath: !!launchOptions.executablePath });
     browser = await puppeteerInstance.launch(launchOptions);
     
     if (!browser) {
       throw new Error('브라우저 실행 실패');
     }
+    
+    console.log('[smartblock] 브라우저 실행 성공');
     
     page = await browser.newPage();
     await page.setViewport(viewport);
