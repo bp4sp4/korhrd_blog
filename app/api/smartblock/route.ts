@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import lambdaChromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
 import type { Browser, Page } from 'puppeteer-core';
 
 export const runtime = 'nodejs';
@@ -52,7 +51,15 @@ async function scrapeSmartBlocks(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   try {
-    // puppeteer-core + @sparticuz/chromium 사용
+    // Vercel 환경: puppeteer-core + @sparticuz/chromium 사용
+    // 로컬 환경: 일반 puppeteer 사용
+    let puppeteerInstance: any;
+    if (isVercel) {
+      puppeteerInstance = (await import('puppeteer-core')).default;
+    } else {
+      puppeteerInstance = (await import('puppeteer')).default;
+    }
+    
     const launchOptions = isVercel
       ? {
           args: lambdaChromium.args,
@@ -64,8 +71,12 @@ async function scrapeSmartBlocks(
           args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
         };
     
-    console.log('[smartblock] 브라우저 실행 중...');
-    browser = await puppeteer.launch(launchOptions);
+    console.log('[smartblock] 브라우저 실행 중...', { isVercel });
+    browser = await puppeteerInstance.launch(launchOptions);
+    
+    if (!browser) {
+      throw new Error('브라우저 실행 실패');
+    }
     
     page = await browser.newPage();
     await page.setViewport(viewport);

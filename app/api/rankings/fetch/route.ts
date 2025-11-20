@@ -596,6 +596,7 @@ async function fetchSmartblockEntries(
 
       const json = await response.json();
       const smartBlocks = Array.isArray(json.smartBlocks) ? json.smartBlocks : [];
+      console.log(`[ranking] 스마트블록 수집: ${keyword} - 블록 개수: ${smartBlocks.length}`);
       const results: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
 
     const extractBlogId = (value?: string | null): string | null => {
@@ -638,10 +639,12 @@ async function fetchSmartblockEntries(
     // 1. 인기글 블록이 있으면 → 인기글 블록의 index를 순위로 사용
     // 2. 인기글 블록이 없으면 → 첫 번째 스마트블록의 index를 순위로 사용
     const rankingBlock = popularBlock || (smartBlockBlocks.length > 0 ? smartBlockBlocks[0] : null);
+    console.log(`[ranking] 순위 블록 결정: ${keyword} - 인기글 블록: ${!!popularBlock}, 스마트블록 개수: ${smartBlockBlocks.length}, 순위 블록: ${rankingBlock?.title || '없음'}`);
 
     // 1. 실제 순위 블록 처리 (인기글 블록 또는 첫 번째 스마트블록)
     if (rankingBlock) {
       const items = Array.isArray(rankingBlock?.data) ? rankingBlock.data : [];
+      console.log(`[ranking] 순위 블록 처리: ${keyword} - 아이템 개수: ${items.length}`);
       items.forEach((item: any, index: number) => {
         const rawBlogId =
           typeof item?.authorId === 'string'
@@ -698,6 +701,9 @@ async function fetchSmartblockEntries(
           blockRank: actualRank, // 블록 내 순위
         } as any);
       });
+      console.log(`[ranking] 순위 블록 처리 완료: ${keyword} - 결과 개수: ${results.length}`);
+    } else {
+      console.warn(`[ranking] 순위 블록 없음: ${keyword} - 인기글 블록: ${!!popularBlock}, 스마트블록 개수: ${smartBlockBlocks.length}`);
     }
 
     // 2. 다른 스마트블록 처리 (인기글 블록 제외, 매칭용으로만 사용, 순위는 null)
