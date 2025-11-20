@@ -456,6 +456,7 @@ export async function GET(request: NextRequest) {
             
             // Activity log 기록
             try {
+              const matchedAny = matched as any;
               await adminClient.from('record_activity_logs').insert({
                 action: 'update',
                 record_id: record.id,
@@ -469,6 +470,10 @@ export async function GET(request: NextRequest) {
                   link: matched?.link ?? null,
                   nickname: matched?.nickname ?? null,
                   fetchedAt: new Date().toISOString(),
+                  // 블록 정보 추가
+                  blockTitle: matchedAny?.blockTitle ?? null,
+                  blockIndex: matchedAny?.blockIndex ?? null,
+                  blockRank: matchedAny?.blockRank ?? null,
                 },
               });
             } catch (logError: any) {
@@ -652,7 +657,11 @@ async function fetchSmartblockEntries(
           rank: index + 1, // 블록 내 순위를 그대로 사용
           nickname,
           snippet,
-        });
+          // 블록 정보 추가 (타입 확장)
+          blockTitle: popularBlock?.title || null,
+          blockIndex: 0, // 인기글 블록은 항상 0
+          blockRank: index + 1, // 블록 내 순위
+        } as any);
       });
     }
 
@@ -727,6 +736,9 @@ async function fetchSmartblockEntries(
           rank = baseRank + otherBlockItemCount;
         }
 
+        const blockTitle = typeof block?.title === 'string' ? block.title : null;
+        const blockRank = typeof item?.index === 'number' && item.index > 0 ? item.index : forEachIndex + 1;
+        
         results.push({
           keyword,
           blogId: blogId ?? '',
@@ -735,7 +747,11 @@ async function fetchSmartblockEntries(
           rank,
           nickname,
           snippet,
-        });
+          // 블록 정보 추가 (타입 확장)
+          blockTitle,
+          blockIndex: blockIndex - 1, // 이미 증가했으므로 -1
+          blockRank, // 블록 내 순위
+        } as any);
       });
     }
 
@@ -799,7 +815,11 @@ async function fetchSmartblockEntries(
           rank: baseRank + generalSearchItemCount,
           nickname,
           snippet,
-        });
+          // 블록 정보 추가 (타입 확장)
+          blockTitle: block?.title || '일반 검색 결과',
+          blockIndex: -1, // 일반 검색 결과는 -1
+          blockRank: index + 1, // 블록 내 순위
+        } as any);
       });
     }
 
