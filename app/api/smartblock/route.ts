@@ -74,22 +74,47 @@ async function scrapeSmartBlocks(
       throw new Error(`Puppeteer 로드 실패: ${importError?.message}`);
     }
     
-    const launchOptions = isVercel
-      ? {
+    let launchOptions: any;
+    if (isVercel) {
+      try {
+        const executablePath = await lambdaChromium.executablePath();
+        console.log('[smartblock] @sparticuz/chromium executablePath 가져오기 성공');
+        launchOptions = {
           args: lambdaChromium.args,
-          executablePath: await lambdaChromium.executablePath(),
+          executablePath: executablePath,
           headless: true,
-        }
-      : {
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
         };
+      } catch (chromiumError: any) {
+        console.error('[smartblock] @sparticuz/chromium executablePath 가져오기 실패:', chromiumError?.message);
+        throw new Error(`Chromium 실행 파일 경로를 가져올 수 없습니다: ${chromiumError?.message}`);
+      }
+    } else {
+      launchOptions = {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
+      };
+    }
     
-    console.log('[smartblock] 브라우저 실행 중...', { isVercel, hasExecutablePath: !!launchOptions.executablePath });
-    browser = await puppeteerInstance.launch(launchOptions);
+    console.log('[smartblock] 브라우저 실행 중...', { 
+      isVercel, 
+      hasExecutablePath: !!launchOptions.executablePath,
+      args: launchOptions.args?.length || 0,
+    });
+    
+    try {
+      browser = await puppeteerInstance.launch(launchOptions);
+    } catch (launchError: any) {
+      console.error('[smartblock] 브라우저 실행 실패:', {
+        error: launchError?.message,
+        stack: launchError?.stack,
+        isVercel,
+        hasExecutablePath: !!launchOptions.executablePath,
+      });
+      throw new Error(`브라우저 실행 실패: ${launchError?.message || '알 수 없는 오류'}`);
+    }
     
     if (!browser) {
-      throw new Error('브라우저 실행 실패');
+      throw new Error('브라우저 실행 실패: browser가 null입니다');
     }
     
     console.log('[smartblock] 브라우저 실행 성공');
@@ -120,19 +145,22 @@ async function scrapeSmartBlocks(
       throw new Error(`페이지 로드 실패: ${error?.message || '알 수 없는 오류'}`);
     }
 
-    // 스크롤 로직
+    // 스크롤 로직 (Vercel 환경에서는 더 많은 대기 시간 필요)
+    const scrollDelay = isVercel ? 2000 : 1000;
+    console.log('[smartblock] 스크롤 시작...');
     await page.evaluate(() => {
       window.scrollTo(0, 300);
     });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, scrollDelay));
     await page.evaluate(() => {
       window.scrollTo(0, 900);
     });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, scrollDelay));
     await page.evaluate(() => {
       window.scrollTo(0, 1500);
     });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, scrollDelay));
+    console.log('[smartblock] 스크롤 완료');
 
     const selectors = [
       '.fds-ugc-block-mod',
@@ -158,8 +186,8 @@ async function scrapeSmartBlocks(
       console.warn('[smartblock] selector wait timeout, using current DOM', error?.message || String(error));
     }
     
-    // 추가 대기 시간
-    const waitTime = 3000;
+    // 추가 대기 시간 (Vercel 환경에서는 더 긴 대기 시간 필요)
+    const waitTime = isVercel ? 5000 : 3000;
     console.log(`[smartblock] 최종 대기 중... (${waitTime}ms)`);
     await new Promise((resolve) => setTimeout(resolve, waitTime));
 
