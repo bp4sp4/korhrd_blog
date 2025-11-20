@@ -499,6 +499,11 @@ export default function AdminTable({
         throw new Error(result?.error || '순위 갱신 요청에 실패했습니다.');
       }
 
+      // 응답 요약 정보 로깅
+      if (result?.summary) {
+        console.log('[AdminTable] 랭킹 갱신 요약:', result.summary);
+      }
+
       const updates = Array.isArray(result?.updated) ? result.updated : [];
       const updateMap = new Map<string, any>();
 
@@ -531,6 +536,20 @@ export default function AdminTable({
           return item;
         })
       );
+
+      // 요약 정보 표시
+      const summaryMessages = [];
+      if (successCount > 0) {
+        summaryMessages.push(`${successCount}개 순위 갱신`);
+      }
+      if (searchVolumeCount > 0) {
+        summaryMessages.push(`${searchVolumeCount}개 검색량 갱신`);
+      }
+      if (summaryMessages.length > 0) {
+        showTemporarySuccess(`${summaryMessages.join(', ')} 완료되었습니다.`);
+      } else {
+        showTemporarySuccess('갱신된 항목이 없습니다. (스마트블록에서 확인되지 않음)');
+      }
 
       if (successCount > 0 || searchVolumeCount > 0) {
         const messages = [];

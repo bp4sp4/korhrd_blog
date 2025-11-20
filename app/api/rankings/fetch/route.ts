@@ -2,6 +2,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchNaverRanking, fetchNaverSearchCountFromKeywordTool } from '@/lib/naver/ranking';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+export const maxDuration = 300; // 5분
+
 type BlogRecord = {
   id: string;
   keyword: string;
@@ -548,17 +551,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('[ranking] debug', {
+    const successCount = results.filter((r) => r.success).length;
+    const failureCount = results.filter((r) => !r.success).length;
+    const rankingUpdatedCount = results.filter((r) => r.ranking !== null && r.ranking !== undefined).length;
+    const searchVolumeUpdatedCount = results.filter((r) => r.searchVolume !== null && r.searchVolume !== undefined).length;
+
+    console.log('[ranking] 완료:', {
       requestedKeyword: keywordParam,
       recordCount: records.length,
-      records,
-      results,
+      successCount,
+      failureCount,
+      rankingUpdatedCount,
+      searchVolumeUpdatedCount,
+      results: results.map((r) => ({
+        keyword: r.keyword,
+        ranking: r.ranking,
+        searchVolume: r.searchVolume,
+        success: r.success,
+        error: r.error,
+      })),
     });
 
-      return NextResponse.json({
-        success: true,
-        updated: results,
-      });
+    return NextResponse.json({
+      success: true,
+      updated: results,
+      summary: {
+        total: records.length,
+        success: successCount,
+        failure: failureCount,
+        rankingUpdated: rankingUpdatedCount,
+        searchVolumeUpdated: searchVolumeUpdatedCount,
+      },
+    });
   } catch (error: any) {
     console.error('[ranking] 업데이트 실패', {
       error: error?.message,
