@@ -411,7 +411,32 @@ export async function GET(request: NextRequest) {
 
         const rank = matched && matched.rank !== null && matched.rank !== undefined ? matched.rank : null;
         if (!matched) {
-          console.warn(`[ranking] ${record.keyword} - 매칭된 항목 없음. entries 개수: ${entries.length}`);
+          console.warn(`[ranking] ${record.keyword} - 매칭된 항목 없음. entries 개수: ${entries.length}, rank가 있는 entries: ${entries.filter(e => e.rank !== null && e.rank !== undefined).length}`);
+          // rank가 있는 entries의 상세 정보 로깅
+          const rankedEntries = entries.filter(e => e.rank !== null && e.rank !== undefined);
+          if (rankedEntries.length > 0) {
+            console.log(`[ranking] ${record.keyword} - rank가 있는 entries:`, rankedEntries.map(e => ({
+              rank: e.rank,
+              blogId: e.blogId,
+              nickname: e.nickname,
+              title: e.title?.substring(0, 50),
+              link: e.link,
+            })));
+          } else {
+            console.warn(`[ranking] ${record.keyword} - rank가 있는 entry가 없음. 모든 entries:`, entries.map(e => ({
+              rank: e.rank,
+              blogId: e.blogId,
+              nickname: e.nickname,
+              title: e.title?.substring(0, 50),
+            })));
+          }
+        } else {
+          console.log(`[ranking] ${record.keyword} - 매칭 성공! rank: ${rank}, matched entry:`, {
+            rank: matched.rank,
+            blogId: matched.blogId,
+            nickname: matched.nickname,
+            title: matched.title?.substring(0, 50),
+          });
         }
 
         // 2. 검색량 가져오기 (타임아웃 10초)
