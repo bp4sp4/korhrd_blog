@@ -1,12 +1,82 @@
 import { NextRequest, NextResponse } from 'next/server';
-import lambdaChromium from '@sparticuz/chromium';
-import type { Browser, Page } from 'puppeteer-core';
+import {
+  chromium as playwrightChromium,
+  type Browser,
+  type BrowserContext,
+} from 'playwright-core';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5분으로 증가 (크롤링 시간이 길어질 수 있음)
 
+let localChromiumPromise: Promise<typeof playwrightChromium> | null = null;
+
+async function getLocalChromium() {
+  if (!localChromiumPromise) {
+    localChromiumPromise = import('playwright').then((mod) => mod.chromium);
+  }
+  return localChromiumPromise;
+}
+
+function resolveBrowserlessEndpoint() {
+  const explicitPlaywrightEndpoint = process.env.BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT;
+  if (explicitPlaywrightEndpoint) {
+    if (!explicitPlaywrightEndpoint.startsWith('wss://') && !explicitPlaywrightEndpoint.startsWith('ws://')) {
+      console.warn('[smartblock] BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT가 올바른 WebSocket URL 형식이 아닙니다:', explicitPlaywrightEndpoint.substring(0, 50));
+    }
+    return explicitPlaywrightEndpoint;
+  }
+
+  const genericEndpoint = process.env.BROWSERLESS_WS_ENDPOINT;
+  if (genericEndpoint) {
+    try {
+      const url = new URL(genericEndpoint);
+      if (!url.pathname.includes('/chromium/playwright')) {
+        if (url.pathname === '/' || url.pathname === '') {
+          url.pathname = '/chromium/playwright';
+        } else if (url.pathname.endsWith('/playwright')) {
+          url.pathname = url.pathname.replace(/\/playwright$/, '/chromium/playwright');
+        } else {
+          url.pathname = url.pathname.replace(/\/?$/, '/chromium/playwright');
+        }
+      }
+      return url.toString();
+    } catch (error) {
+      console.warn('[smartblock] BROWSERLESS_WS_ENDPOINT URL 파싱 실패:', error);
+      if (!genericEndpoint.includes('/chromium/playwright')) {
+        const cleaned = genericEndpoint.replace(/\/playwright\/?$/, '').replace(/\/chromium\/?$/, '');
+        return `${cleaned}${cleaned.includes('?') ? '&' : '?'}token=${process.env.BROWSERLESS_TOKEN || ''}`;
+      }
+      return genericEndpoint;
+    }
+  }
+
+  const token = process.env.BROWSERLESS_TOKEN;
+  if (!token || token.trim() === '') {
+    console.warn('[smartblock] BROWSERLESS_TOKEN이 설정되지 않았습니다.');
+    return null;
+  }
+
+  const region =
+    process.env.BROWSERLESS_REGION ||
+    process.env.BROWSERLESS_DEPLOYMENT ||
+    'production-sfo';
+
+  const endpoint = `wss://${region}.browserless.io/chromium/playwright?token=${token}`;
+  console.log(`[smartblock] Browserless 엔드포인트 생성: wss://${region}.browserless.io/chromium/playwright?token=***`);
+  return endpoint;
+}
+
 export async function POST(request: NextRequest) {
   const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+  const browserlessEndpoint = resolveBrowserlessEndpoint();
+
+  console.log('[smartblock] Browserless 설정 확인:', {
+    hasExplicitEndpoint: !!process.env.BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT,
+    hasGenericEndpoint: !!process.env.BROWSERLESS_WS_ENDPOINT,
+    hasToken: !!process.env.BROWSERLESS_TOKEN,
+    resolvedEndpoint: browserlessEndpoint ? `${browserlessEndpoint.substring(0, 50)}...` : 'null',
+    isVercel,
+  });
 
   try {
     const { keyword } = await request.json();
@@ -14,8 +84,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'keyword is required' }, { status: 400 });
     }
 
+    if (isVercel && !browserlessEndpoint) {
+      return NextResponse.json(
+        {
+          error: 'Vercel 환경에서는 Browserless (Playwright) 연결이 필요합니다.',
+          hint: '환경 변수 BROWSERLESS_PLAYWRIGHT_WS_ENDPOINT 또는 BROWSERLESS_TOKEN을 설정해 주세요.',
+        },
+        { status: 500 }
+      );
+    }
+
     console.log(`[smartblock] 요청 시작: ${keyword} (Vercel: ${isVercel})`);
-    const smartBlocks = await scrapeSmartBlocks(keyword, isVercel);
+    const smartBlocks = await scrapeSmartBlocks(keyword, browserlessEndpoint, isVercel);
     console.log(`[smartblock] 요청 완료: ${keyword} - 블록 개수: ${smartBlocks.length}`);
 
     return NextResponse.json({
@@ -44,104 +124,65 @@ export async function POST(request: NextRequest) {
 
 async function scrapeSmartBlocks(
   keyword: string,
+  browserlessEndpoint: string | null,
   isVercel: boolean
 ) {
   const url = `https://search.naver.com/search.naver?query=${encodeURIComponent(keyword)}`;
+  const useBrowserless = !!browserlessEndpoint;
   let browser: Browser | null = null;
-  let page: Page | null = null;
-  
-  if (!browser || !page) {
-    // 브라우저와 페이지는 아래에서 생성되므로 여기서는 체크하지 않음
-  }
+  let context: BrowserContext | null = null;
   const viewport = { width: 1280, height: 720 };
   const userAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
   try {
-    // Vercel 환경: puppeteer-core + @sparticuz/chromium 사용
-    // 로컬 환경: 일반 puppeteer 사용
-    let puppeteerInstance: any;
-    try {
-      if (isVercel) {
-        console.log('[smartblock] Vercel 환경: puppeteer-core 로드 중...');
-        puppeteerInstance = (await import('puppeteer-core')).default;
-      } else {
-        console.log('[smartblock] 로컬 환경: puppeteer 로드 중...');
-        puppeteerInstance = (await import('puppeteer')).default;
-      }
-    } catch (importError: any) {
-      console.error('[smartblock] Puppeteer 로드 실패:', importError?.message);
-      throw new Error(`Puppeteer 로드 실패: ${importError?.message}`);
-    }
-    
-    let launchOptions: any;
-    if (isVercel) {
+    if (useBrowserless && browserlessEndpoint) {
+      // Browserless 연결 (타임아웃 60초)
+      const connectTimeout = 60000;
+      console.log(`[smartblock] Browserless 연결 시도: ${browserlessEndpoint.substring(0, 50)}...`);
+      
       try {
-        // @sparticuz/chromium의 executablePath 가져오기
-        // Vercel Lambda 환경에서는 /tmp 디렉토리 사용
-        const executablePath = await lambdaChromium.executablePath('/tmp/chromium');
-        console.log('[smartblock] @sparticuz/chromium executablePath 가져오기 성공:', executablePath);
-        launchOptions = {
-          args: lambdaChromium.args,
-          executablePath: executablePath,
-          headless: true,
-        };
-      } catch (chromiumError: any) {
-        console.error('[smartblock] @sparticuz/chromium executablePath 가져오기 실패:', {
-          error: chromiumError?.message,
-          stack: chromiumError?.stack,
+        browser = await playwrightChromium.connect({
+          wsEndpoint: browserlessEndpoint,
+          timeout: connectTimeout,
         });
-        // 기본 경로로 재시도
-        try {
-          const executablePath = await lambdaChromium.executablePath();
-          console.log('[smartblock] 기본 경로로 재시도 성공:', executablePath);
-          launchOptions = {
-            args: lambdaChromium.args,
-            executablePath: executablePath,
-            headless: true,
-          };
-        } catch (retryError: any) {
-          console.error('[smartblock] 재시도 실패:', retryError?.message);
-          throw new Error(`Chromium 실행 파일 경로를 가져올 수 없습니다: ${chromiumError?.message}`);
-        }
+        console.log('[smartblock] Browserless 연결 성공');
+      } catch (error: any) {
+        console.error('[smartblock] Browserless 연결 실패:', error?.message);
+        throw new Error(`Browserless 연결 실패: ${error?.message || '알 수 없는 오류'}`);
       }
-    } else {
-      launchOptions = {
+    }
+
+    if (!browser) {
+      // 로컬 환경: 일반 playwright 사용
+      const browserType = isVercel ? playwrightChromium : await getLocalChromium();
+      browser = await browserType.launch({
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
-      };
-    }
-    
-    console.log('[smartblock] 브라우저 실행 중...', { 
-      isVercel, 
-      hasExecutablePath: !!launchOptions.executablePath,
-      args: launchOptions.args?.length || 0,
-    });
-    
-    try {
-      browser = await puppeteerInstance.launch(launchOptions);
-    } catch (launchError: any) {
-      console.error('[smartblock] 브라우저 실행 실패:', {
-        error: launchError?.message,
-        stack: launchError?.stack,
-        isVercel,
-        hasExecutablePath: !!launchOptions.executablePath,
       });
-      throw new Error(`브라우저 실행 실패: ${launchError?.message || '알 수 없는 오류'}`);
+      console.log('[smartblock] 로컬 브라우저 실행 성공');
     }
-    
-    if (!browser) {
-      throw new Error('브라우저 실행 실패: browser가 null입니다');
-    }
-    
-    console.log('[smartblock] 브라우저 실행 성공');
-    
-    page = await browser.newPage();
-    await page.setViewport(viewport);
-    await page.setUserAgent(userAgent);
 
-    if (!page) {
-      throw new Error('페이지 생성 실패');
+    try {
+      context = await browser.newContext({
+        userAgent,
+        viewport,
+      });
+    } catch (error) {
+      console.warn('[smartblock] 새 컨텍스트 생성 실패, 기존 컨텍스트 재사용', error);
+      const existingContext = browser.contexts()[0];
+      if (!existingContext) {
+        throw error;
+      }
+      context = existingContext;
+      await context.setExtraHTTPHeaders({ 'User-Agent': userAgent });
+    }
+
+    const page = await context.newPage();
+    try {
+      await page.setViewportSize(viewport);
+    } catch {
+      // ignore if viewport cannot be adjusted
     }
 
     // 페이지 로드 타임아웃 60초
@@ -162,22 +203,19 @@ async function scrapeSmartBlocks(
       throw new Error(`페이지 로드 실패: ${error?.message || '알 수 없는 오류'}`);
     }
 
-    // 스크롤 로직 (Vercel 환경에서는 더 많은 대기 시간 필요)
-    const scrollDelay = isVercel ? 2000 : 1000;
-    console.log('[smartblock] 스크롤 시작...');
+    // 스크롤 로직
     await page.evaluate(() => {
       window.scrollTo(0, 300);
     });
-    await new Promise((resolve) => setTimeout(resolve, scrollDelay));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await page.evaluate(() => {
       window.scrollTo(0, 900);
     });
-    await new Promise((resolve) => setTimeout(resolve, scrollDelay));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await page.evaluate(() => {
       window.scrollTo(0, 1500);
     });
-    await new Promise((resolve) => setTimeout(resolve, scrollDelay));
-    console.log('[smartblock] 스크롤 완료');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const selectors = [
       '.fds-ugc-block-mod',
@@ -187,15 +225,10 @@ async function scrapeSmartBlocks(
 
     // 스마트블록 요소 대기 (타임아웃 60초)
     const selectorTimeout = 60000;
-    if (!page) {
-      throw new Error('페이지가 없습니다');
-    }
-    
-    const currentPage = page; // TypeScript가 null이 아님을 인식하도록
     try {
-      await Promise.race(
+      await Promise.any(
         selectors.map((selector) =>
-          currentPage.waitForSelector(selector, { timeout: selectorTimeout }).catch(() => null)
+          page.waitForSelector(selector, { timeout: selectorTimeout })
         )
       );
       console.log('[smartblock] 스마트블록 요소 발견');
@@ -203,8 +236,8 @@ async function scrapeSmartBlocks(
       console.warn('[smartblock] selector wait timeout, using current DOM', error?.message || String(error));
     }
     
-    // 추가 대기 시간 (Vercel 환경에서는 더 긴 대기 시간 필요)
-    const waitTime = isVercel ? 5000 : 3000;
+    // 추가 대기 시간
+    const waitTime = 3000;
     console.log(`[smartblock] 최종 대기 중... (${waitTime}ms)`);
     await new Promise((resolve) => setTimeout(resolve, waitTime));
 
@@ -575,7 +608,7 @@ async function scrapeSmartBlocks(
 
     return smartBlocks;
   } finally {
-    await page?.close().catch(() => undefined);
+    await context?.close().catch(() => undefined);
     await browser?.close().catch(() => undefined);
   }
 }
