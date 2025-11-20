@@ -66,6 +66,29 @@ function extractBlogIdFromUrl(value?: string | null): string | null {
     if (!NAVER_HOSTS.includes(url.hostname)) {
       return null;
     }
+    
+    // cafe.naver.com의 경우 카페 이름 추출
+    if (url.hostname === 'cafe.naver.com') {
+      const segments = url.pathname
+        .split('/')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+      if (segments.length > 0) {
+        // 카페 이름은 첫 번째 세그먼트
+        return segments[0].toLowerCase();
+      }
+      // query parameter에서도 카페 이름 추출 시도
+      const artParam = url.searchParams.get('art');
+      if (artParam) {
+        // art 파라미터가 있으면 URL에서 카페 이름 추출 시도
+        const match = value.match(/cafe\.naver\.com\/([^/?#]+)/);
+        if (match) {
+          return match[1].toLowerCase();
+        }
+      }
+    }
+    
+    // blog.naver.com의 경우
     const segments = url.pathname
       .split('/')
       .map((segment) => segment.trim())
@@ -323,8 +346,8 @@ export async function GET(request: NextRequest) {
 
     for (const record of records) {
       try {
-        // 1. 랭킹 가져오기 (단일 레코드 조회 시 더 짧은 타임아웃)
-        const timeout = records.length === 1 ? 20000 : 30000; // 단일: 20초, 여러: 30초
+        // 1. 랭킹 가져오기 (타임아웃 60초)
+        const timeout = 60000; // 60초
         const entries = await fetchSmartblockEntries(record.keyword, request, timeout);
         
         // record의 identifier 수집
@@ -343,6 +366,11 @@ export async function GET(request: NextRequest) {
         
         let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
         for (const entry of entries) {
+          // rank가 null이면 순위에 포함되지 않는 항목이므로 스킵
+          if (entry.rank === null || entry.rank === undefined) {
+            continue;
+          }
+
           // 키워드가 일치하는지 확인 (띄어쓰기 제거하여 비교)
           // entry.keyword가 없거나 빈 문자열이면 같은 키워드로 검색한 결과이므로 통과
           const normalizedEntryKeyword = normalizeKeywordForComparison(entry.keyword);
@@ -374,7 +402,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        const rank = matched ? matched.rank : null;
+        const rank = matched && matched.rank !== null && matched.rank !== undefined ? matched.rank : null;
         if (!matched) {
           console.warn(`[ranking] ${record.keyword} - 매칭된 항목 없음. entries 개수: ${entries.length}`);
         }
@@ -539,7 +567,7 @@ export async function GET(request: NextRequest) {
 async function fetchSmartblockEntries(
   keyword: string,
   request: NextRequest,
-  timeout: number = 30000
+  timeout: number = 60000
 ): Promise<Awaited<ReturnType<typeof fetchNaverRanking>>> {
   try {
     const smartblockUrl = new URL('/api/smartblock', request.url);
@@ -584,9 +612,9 @@ async function fetchSmartblockEntries(
       return fromUrl ? fromUrl.toLowerCase() : null;
     };
 
-    // 인기글 블록 찾기
+    // 인기글 블록 찾기 ("인기글", "' 키워드' 인기글", "교육학문 인기글" 등)
     const popularBlock = smartBlocks.find(
-      (block: any) => block?.title && (block.title.includes('인기글') || (block.title.includes("'") && block.title.includes("' 인기글")))
+      (block: any) => block?.title && block.title.includes('인기글')
     );
 
     // 스마트블록과 일반 검색 결과를 구분
@@ -606,9 +634,14 @@ async function fetchSmartblockEntries(
       return `${normalizedLink}|${normalizedBlogId}|${normalizedNickname}`;
     };
 
-    // 1. 인기글 블록 우선 처리 (블록 내 index를 그대로 rank로 사용)
-    if (popularBlock) {
-      const items = Array.isArray(popularBlock?.data) ? popularBlock.data : [];
+    // 실제 순위를 가져올 블록 결정
+    // 1. 인기글 블록이 있으면 → 인기글 블록의 index를 순위로 사용
+    // 2. 인기글 블록이 없으면 → 첫 번째 스마트블록의 index를 순위로 사용
+    const rankingBlock = popularBlock || (smartBlockBlocks.length > 0 ? smartBlockBlocks[0] : null);
+
+    // 1. 실제 순위 블록 처리 (인기글 블록 또는 첫 번째 스마트블록)
+    if (rankingBlock) {
+      const items = Array.isArray(rankingBlock?.data) ? rankingBlock.data : [];
       items.forEach((item: any, index: number) => {
         const rawBlogId =
           typeof item?.authorId === 'string'
@@ -648,37 +681,33 @@ async function fetchSmartblockEntries(
         const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
         seenEntries.add(entryKey);
 
-        // 인기글 블록의 index를 그대로 rank로 사용 (1부터 시작)
+        // 실제 순위: item.index를 그대로 사용 (1, 2, 3...)
+        const actualRank = typeof item?.index === 'number' && item.index > 0 ? item.index : index + 1;
+
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: index + 1, // 블록 내 순위를 그대로 사용
+          rank: actualRank, // 실제 검색 순위 (인기글 블록 또는 첫 번째 스마트블록)
           nickname,
           snippet,
           // 블록 정보 추가 (타입 확장)
-          blockTitle: popularBlock?.title || null,
-          blockIndex: 0, // 인기글 블록은 항상 0
-          blockRank: index + 1, // 블록 내 순위
+          blockTitle: rankingBlock?.title || null,
+          blockIndex: popularBlock ? 0 : 0, // 순위 블록은 항상 0
+          blockRank: actualRank, // 블록 내 순위
         } as any);
       });
     }
 
-    // 2. 다른 스마트블록 처리 (인기글 블록 제외, 중복 제거)
-    // 인기글 블록이 없으면 첫 번째 블록의 index를 그대로 사용
-    let otherBlockItemCount = 0; // 실제로 추가된 다른 블록 항목 수
-    let blockIndex = 0; // 블록 순서 추적
-    
+    // 2. 다른 스마트블록 처리 (인기글 블록 제외, 매칭용으로만 사용, 순위는 null)
     for (const block of smartBlockBlocks) {
       // 인기글 블록은 이미 처리했으므로 스킵
-      if (block === popularBlock) {
+      if (block === rankingBlock) {
         continue;
       }
 
       const items = Array.isArray(block?.data) ? block.data : [];
-      const isFirstBlockWithoutPopular = !popularBlock && blockIndex === 0;
-      blockIndex++;
       
       items.forEach((item: any, forEachIndex: number) => {
         const rawBlogId =
@@ -718,48 +747,39 @@ async function fetchSmartblockEntries(
 
         const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
         
-        // 인기글 블록에 이미 있는 항목은 스킵 (인기글 블록의 순위가 우선)
+        // 순위 블록에 이미 있는 항목은 스킵 (순위 블록의 순위가 우선)
         if (seenEntries.has(entryKey)) {
           return;
         }
 
+        // 다른 블록의 항목은 순위에 포함하지 않음 (매칭용으로만 사용)
+        // 하지만 블록 정보는 저장
         seenEntries.add(entryKey);
-        otherBlockItemCount++;
-
-        // 첫 번째 블록이고 인기글 블록이 없으면 item.index를 그대로 사용 (1부터 시작)
-        // 그 외에는 인기글 블록 다음 순위부터 시작
-        let rank: number;
-        if (isFirstBlockWithoutPopular && typeof item?.index === 'number' && item.index > 0) {
-          rank = item.index; // item.index를 그대로 사용 (1, 2, 3...)
-        } else {
-          const baseRank = popularBlock ? (Array.isArray(popularBlock?.data) ? popularBlock.data.length : 0) : 0;
-          rank = baseRank + otherBlockItemCount;
-        }
 
         const blockTitle = typeof block?.title === 'string' ? block.title : null;
         const blockRank = typeof item?.index === 'number' && item.index > 0 ? item.index : forEachIndex + 1;
         
+        // 다른 블록은 순위에 포함하지 않지만, 블록 정보는 저장 (매칭용)
+        // rank는 null로 설정하여 순위에 포함되지 않음을 표시
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank,
+          rank: null, // 다른 블록은 순위에 포함하지 않음
           nickname,
           snippet,
           // 블록 정보 추가 (타입 확장)
           blockTitle,
-          blockIndex: blockIndex - 1, // 이미 증가했으므로 -1
+          blockIndex: -1, // 순위 블록이 아닌 블록은 -1
           blockRank, // 블록 내 순위
         } as any);
       });
     }
 
-    // 3. 일반 검색 결과 처리 (중복 제거)
-    let generalSearchItemCount = 0; // 실제로 추가된 일반 검색 결과 항목 수
+    // 3. 일반 검색 결과 처리 (순위에 포함하지 않음, 매칭용으로만 사용)
     for (const block of generalSearchBlocks) {
       const items = Array.isArray(block?.data) ? block.data : [];
-      const baseRank = results.length > 0 ? Math.max(...results.map(r => r.rank)) : 0;
       
       items.forEach((item: any, index: number) => {
         const rawBlogId =
@@ -799,20 +819,20 @@ async function fetchSmartblockEntries(
 
         const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
         
-        // 이미 처리된 항목은 스킵 (인기글 블록의 순위가 우선)
+        // 이미 처리된 항목은 스킵
         if (seenEntries.has(entryKey)) {
           return;
         }
 
         seenEntries.add(entryKey);
-        generalSearchItemCount++;
 
+        // 일반 검색 결과는 순위에 포함하지 않음 (매칭용으로만 사용)
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: baseRank + generalSearchItemCount,
+          rank: null, // 일반 검색 결과는 순위에 포함하지 않음
           nickname,
           snippet,
           // 블록 정보 추가 (타입 확장)
