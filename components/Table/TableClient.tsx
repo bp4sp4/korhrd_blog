@@ -598,10 +598,38 @@ export default function TableClient({
           cache: 'no-store', // 캐시 방지
         });
 
-        const result = await response.json();
-
+        // 응답 상태 확인
         if (!response.ok) {
-          console.error('[blog-records] 랭킹 업데이트 실패:', result?.error || '알 수 없는 오류');
+          // 504 타임아웃 또는 다른 서버 에러 처리
+          if (response.status === 504) {
+            console.error('[blog-records] 랭킹 업데이트 타임아웃: 서버 응답 시간이 초과되었습니다.');
+            return;
+          }
+          
+          // JSON 파싱 시도 (에러 응답도 JSON일 수 있음)
+          let errorMessage = `서버 오류 (${response.status})`;
+          try {
+            const errorResult = await response.json();
+            errorMessage = errorResult?.error || errorMessage;
+          } catch {
+            // JSON이 아닌 경우 텍스트로 읽기 시도
+            try {
+              const text = await response.text();
+              errorMessage = text || errorMessage;
+            } catch {
+              // 읽기 실패 시 기본 메시지 사용
+            }
+          }
+          console.error('[blog-records] 랭킹 업데이트 실패:', errorMessage);
+          return;
+        }
+
+        // 성공 응답 JSON 파싱
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          console.error('[blog-records] 랭킹 업데이트 응답 파싱 실패:', parseError);
           return;
         }
 

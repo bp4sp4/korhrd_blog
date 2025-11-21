@@ -41,17 +41,7 @@ export default function AdminTable({
   const [data, setData] = useState(initialData);
   
   // 디버깅: 초기 데이터에 created_at이 있는지 확인
-  useEffect(() => {
-    if (initialData.length > 0) {
-      const sample = initialData[0];
-      console.log('[AdminTable] Sample record:', {
-        id: sample.id,
-        keyword: sample.keyword,
-        hasCreatedAt: !!sample.created_at,
-        created_at: sample.created_at,
-      });
-    }
-  }, [initialData]);
+
   const [filters, setFilters] = useState({
     id: '',
     field: '전체',
@@ -474,17 +464,43 @@ export default function AdminTable({
         method: 'GET',
       });
 
-      const result = await response.json();
-
+      // 응답 상태 확인
       if (!response.ok) {
-        throw new Error(result?.error || '전체 순위 갱신 요청에 실패했습니다.');
+        // 504 타임아웃 또는 다른 서버 에러 처리
+        if (response.status === 504) {
+          throw new Error('서버 응답 시간이 초과되었습니다. 레코드가 많아 시간이 오래 걸릴 수 있습니다. 잠시 후 다시 시도해주세요.');
+        }
+        
+        // JSON 파싱 시도 (에러 응답도 JSON일 수 있음)
+        let errorMessage = `서버 오류 (${response.status})`;
+        try {
+          const errorResult = await response.json();
+          errorMessage = errorResult?.error || errorMessage;
+        } catch {
+          // JSON이 아닌 경우 텍스트로 읽기 시도
+          try {
+            const text = await response.text();
+            errorMessage = text || errorMessage;
+          } catch {
+            // 읽기 실패 시 기본 메시지 사용
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      // 성공 응답 JSON 파싱
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        throw new Error('서버 응답을 파싱할 수 없습니다. 서버가 정상적으로 응답하지 않았을 수 있습니다.');
       }
 
       // 응답 요약 정보 로깅
       if (result?.summary) {
         console.log('[AdminTable] 전체 랭킹 갱신 요약:', result.summary);
         showTemporarySuccess(
-          `전체 랭킹 갱신 완료: ${result.summary.rankingUpdated || 0}개 순위, ${result.summary.searchVolumeUpdated || 0}개 검색량 갱신`
+          `전체 랭킹 갱신 완료: ${result.summary.success || 0}개 성공 (총 ${result.summary.total || 0}개 처리)`
         );
       }
 

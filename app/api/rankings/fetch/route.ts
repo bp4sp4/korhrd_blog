@@ -508,32 +508,54 @@ export async function GET(request: NextRequest) {
         console.log(`[ranking] 제한된 레코드 조회: ${records.length}개 (limit: ${limit})`);
       } else {
         // limit이 없으면 모든 레코드 가져오기 (페이지네이션)
+        // 배포 환경에서 안정적으로 작동하도록 각 페이지마다 새로운 쿼리 생성
         let allRecords: BlogRecord[] = [];
         let page = 0;
         const pageSize = 1000;
         let hasMore = true;
+        const maxPages = 100; // 최대 100페이지 (10만개) 제한으로 무한 루프 방지
 
-        while (hasMore) {
-          const { data, error } = await query
-            .range(page * pageSize, (page + 1) * pageSize - 1);
-          
-          if (error) {
-            console.error('[ranking] 레코드 조회 오류:', error);
+        while (hasMore && page < maxPages) {
+          try {
+            // 각 페이지마다 새로운 쿼리 생성 (중요: Supabase 쿼리 재사용 시 문제 발생 가능)
+            const { data, error } = await adminClient
+              .from('blog_records')
+              .select('id, keyword, link, title, author')
+              .order('created_at', { ascending: false })
+              .range(page * pageSize, (page + 1) * pageSize - 1);
+            
+            if (error) {
+              console.error(`[ranking] 페이지 ${page + 1} 조회 오류:`, error);
+              // 에러가 발생해도 이미 가져온 데이터는 유지하고 중단
+              break;
+            }
+
+            if (data && data.length > 0) {
+              allRecords = [...allRecords, ...data];
+              page++;
+              hasMore = data.length === pageSize;
+              console.log(`[ranking] 페이지 ${page} 조회 완료: ${data.length}개 (누적: ${allRecords.length}개)`);
+              
+              // 배포 환경에서 메모리 관리를 위해 주기적으로 로깅
+              if (page % 10 === 0) {
+                console.log(`[ranking] 진행 상황: ${allRecords.length}개 레코드 로드됨 (${page}페이지)`);
+              }
+            } else {
+              hasMore = false;
+            }
+          } catch (pageError: any) {
+            console.error(`[ranking] 페이지 ${page + 1} 처리 중 예외 발생:`, pageError?.message);
+            // 예외 발생 시 이미 가져온 데이터는 유지하고 중단
             break;
-          }
-
-          if (data && data.length > 0) {
-            allRecords = [...allRecords, ...data];
-            page++;
-            hasMore = data.length === pageSize;
-            console.log(`[ranking] 페이지 ${page} 조회 완료: ${data.length}개 (누적: ${allRecords.length}개)`);
-          } else {
-            hasMore = false;
           }
         }
 
         records = allRecords;
         console.log(`[ranking] 전체 레코드 조회 완료: ${records.length}개`);
+        
+        if (page >= maxPages) {
+          console.warn(`[ranking] 경고: 최대 페이지 수(${maxPages})에 도달했습니다. 일부 레코드가 누락되었을 수 있습니다.`);
+        }
       }
     }
 
@@ -541,7 +563,9 @@ export async function GET(request: NextRequest) {
     const startTime = Date.now();
 
     // **BATCH PROCESSING (병렬 처리)**
+    // 배포 환경에서 안정적으로 작동하도록 배치 크기와 지연 시간 조정
     const BATCH_SIZE = 5; // 한 번에 5개씩 실행 (너무 높으면 네이버 차단 위험)
+    const BATCH_DELAY_MS = 1000; // 배치 간 1초 대기 (서버 부하 방지)
 
     for (let i = 0; i < records.length; i += BATCH_SIZE) {
       // 5개씩 잘라서 가져옴
@@ -549,23 +573,67 @@ export async function GET(request: NextRequest) {
       
       console.log(`[Batch] ${i + 1}~${i + batch.length}번째 항목 처리 중... (총 ${records.length}개 중)`);
       
-      // 5개를 동시에 실행 (Promise.all)
-      const batchResults = await Promise.all(
-        batch.map(record => processRecord(record, request, adminClient))
-      );
-      
-      allResults.push(...batchResults);
+      try {
+        // 5개를 동시에 실행 (Promise.all)
+        // 각 레코드 처리 중 에러가 발생해도 다른 레코드는 계속 처리
+        const batchResults = await Promise.allSettled(
+          batch.map(record => processRecord(record, request, adminClient))
+        );
+        
+        // 성공/실패 결과 분리
+        const successful = batchResults
+          .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+          .map(r => r.value);
+        const failed = batchResults
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map(r => ({ error: r.reason?.message || 'Unknown error' }));
+        
+        allResults.push(...successful);
+        
+        // 실패한 항목도 결과에 포함 (에러 정보 포함)
+        if (failed.length > 0) {
+          console.warn(`[ranking] 배치 ${Math.floor(i / BATCH_SIZE) + 1}에서 ${failed.length}개 항목 처리 실패`);
+          failed.forEach((f, idx) => {
+            const record = batch[idx];
+            if (record) {
+              allResults.push({
+                id: record.id,
+                keyword: record.keyword,
+                ranking: null,
+                searchVolume: null,
+                success: false,
+                error: f.error,
+              });
+            }
+          });
+        }
+      } catch (batchError: any) {
+        console.error(`[ranking] 배치 ${Math.floor(i / BATCH_SIZE) + 1} 처리 중 예외 발생:`, batchError?.message);
+        // 배치 전체가 실패해도 다음 배치는 계속 처리
+        batch.forEach(record => {
+          allResults.push({
+            id: record.id,
+            keyword: record.keyword,
+            ranking: null,
+            searchVolume: null,
+            success: false,
+            error: batchError?.message || 'Batch processing error',
+          });
+        });
+      }
       
       // 배치 간 약간의 휴식 (서버 부하 방지 및 네이버 차단 방지)
       if (i + BATCH_SIZE < records.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
       }
       
-      // 진행 상황 로깅
+      // 진행 상황 로깅 (배포 환경에서도 모니터링 가능하도록)
       const processedCount = allResults.length;
+      const successCount = allResults.filter(r => r.success).length;
       if (processedCount % 10 === 0 || processedCount === records.length) {
         const elapsed = Math.round((Date.now() - startTime) / 1000);
-        console.log(`[ranking] 진행 상황: ${processedCount}/${records.length}개 처리 완료 (경과 시간: ${elapsed}초)`);
+        const progressPercent = Math.round((processedCount / records.length) * 100);
+        console.log(`[ranking] 진행 상황: ${processedCount}/${records.length}개 처리 완료 (${progressPercent}%, 성공: ${successCount}개, 경과: ${elapsed}초)`);
       }
     }
 
