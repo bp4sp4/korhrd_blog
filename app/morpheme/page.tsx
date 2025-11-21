@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import styles from './morpheme.module.css';
 
 interface MorphemeResult {
@@ -12,11 +12,22 @@ interface TopicKeywords {
   [topic: string]: string[];
 }
 
+interface HighlightItem {
+  id: string;
+  start: number;
+  end: number;
+  type: 'forbidden' | 'commercial';
+  text: string;
+  context: string; // 주변 텍스트
+}
+
 export default function MorphemePage() {
   const [content, setContent] = useState('');
   const [morphemes, setMorphemes] = useState<MorphemeResult[]>([]);
   const [topicKeywords, setTopicKeywords] = useState<TopicKeywords>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 간단한 형태소 분석 (단어 분리 및 빈도수 계산)
   const analyzeMorphemes = (text: string): MorphemeResult[] => {
@@ -366,11 +377,10 @@ export default function MorphemePage() {
     '무조건', '완벽히', '완벽', '최고', '최상', '1등', '1위', '의사', '환자', '휴대폰', '강도'
   ];
 
-  // 본문에서 금칙어와 상업 멘트 키워드를 하이라이트하는 함수
-  const highlightCommercialMents = (text: string): string => {
-    // 원본 텍스트에서 금칙어와 상업 멘트 위치를 모두 기록
-    type HighlightItem = { start: number; end: number; type: 'forbidden' | 'commercial'; text: string };
+  // 본문에서 금칙어와 상업 멘트 키워드를 찾는 함수
+  const findHighlights = (text: string): HighlightItem[] => {
     const highlights: HighlightItem[] = [];
+    let highlightId = 0;
     
     // 0. "야 해요" 또는 "야해요" 패턴 감지 (앞에 뭐가 붙든 모두 금칙어, 하지만 "야 해요" 부분만 하이라이트)
     // "되어야 해요", "해야 해요" 등에서 "야 해요" 또는 "야해요" 부분만 찾기
@@ -385,11 +395,18 @@ export default function MorphemePage() {
       const yaStartIndex = match.index + match[1].length - 1; // "야"의 시작 위치
       const yaHaeyoEndIndex = match.index + match[0].length; // "해요"의 끝 위치
       
+      const highlightText = text.substring(yaStartIndex, yaHaeyoEndIndex);
+      const contextStart = Math.max(0, yaStartIndex - 20);
+      const contextEnd = Math.min(text.length, yaHaeyoEndIndex + 20);
+      const context = text.substring(contextStart, contextEnd);
+      
       highlights.push({
+        id: `highlight-${highlightId++}`,
         start: yaStartIndex,
         end: yaHaeyoEndIndex,
         type: 'forbidden',
-        text: text.substring(yaStartIndex, yaHaeyoEndIndex) // "야 해요" 또는 "야해요" 부분
+        text: highlightText,
+        context: context
       });
     }
 
@@ -413,12 +430,17 @@ export default function MorphemePage() {
         // "야해" 또는 "야 해"의 경우 앞의 캡처 그룹을 제외한 실제 매칭 위치 계산
         const actualStart = (keyword === '야해' || keyword === '야 해') ? match.index + (match[1]?.length || 0) : match.index;
         const actualEnd = actualStart + keyword.length;
+        const contextStart = Math.max(0, actualStart - 20);
+        const contextEnd = Math.min(text.length, actualEnd + 20);
+        const context = text.substring(contextStart, contextEnd);
         
         highlights.push({
+          id: `highlight-${highlightId++}`,
           start: actualStart,
           end: actualEnd,
           type: 'forbidden',
-          text: keyword
+          text: keyword,
+          context: context
         });
       }
     });
@@ -444,11 +466,17 @@ export default function MorphemePage() {
         );
         
         if (!overlaps) {
+          const contextStart = Math.max(0, start - 20);
+          const contextEnd = Math.min(text.length, end + 20);
+          const context = text.substring(contextStart, contextEnd);
+          
           highlights.push({
+            id: `highlight-${highlightId++}`,
             start,
             end,
             type: 'commercial',
-            text: match[0]
+            text: match[0],
+            context: context
           });
         }
       }
@@ -466,15 +494,19 @@ export default function MorphemePage() {
       }
     });
     
-    // 4. 텍스트를 분할하여 하이라이트 적용
-    if (finalHighlights.length === 0) {
+    return finalHighlights;
+  };
+
+  // 본문에서 금칙어와 상업 멘트 키워드를 하이라이트하는 함수
+  const highlightCommercialMents = (text: string, highlights: HighlightItem[]): string => {
+    if (highlights.length === 0) {
       return text;
     }
     
-    const parts: Array<{ text: string; type: 'forbidden' | 'commercial' | 'normal' }> = [];
+    const parts: Array<{ text: string; type: 'forbidden' | 'commercial' | 'normal'; id?: string }> = [];
     let lastIndex = 0;
     
-    finalHighlights.forEach(highlight => {
+    highlights.forEach(highlight => {
       // 하이라이트 앞의 일반 텍스트
       if (highlight.start > lastIndex) {
         parts.push({
@@ -486,7 +518,8 @@ export default function MorphemePage() {
       // 하이라이트된 텍스트
       parts.push({
         text: text.substring(highlight.start, highlight.end),
-        type: highlight.type
+        type: highlight.type,
+        id: highlight.id
       });
       
       lastIndex = highlight.end;
@@ -508,8 +541,49 @@ export default function MorphemePage() {
       const className = part.type === 'forbidden' 
         ? styles.forbiddenHighlight 
         : styles.commercialHighlight;
-      return '<span class="' + className + '">' + part.text + '</span>';
+      return `<span class="${className}" data-highlight-id="${part.id}">${part.text}</span>`;
     }).join('');
+  };
+
+  // 하이라이트 위치로 스크롤하는 함수
+  const scrollToHighlight = (highlightId: string) => {
+    const highlight = highlights.find(h => h.id === highlightId);
+    if (!highlight) return;
+
+    // 1. 미리보기에서 하이라이트된 요소로 스크롤
+    const element = document.querySelector(`[data-highlight-id="${highlightId}"]`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // 잠시 배경색 강조
+      const originalBg = (element as HTMLElement).style.backgroundColor;
+      (element as HTMLElement).style.backgroundColor = '#fef3c7';
+      setTimeout(() => {
+        (element as HTMLElement).style.backgroundColor = originalBg;
+      }, 2000);
+    }
+
+    // 2. 본문(textarea)에서도 해당 위치로 이동
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      
+      // textarea 포커스
+      textarea.focus();
+      
+      // 커서를 해당 위치로 이동
+      textarea.setSelectionRange(highlight.start, highlight.end);
+      
+      // 스크롤 위치 계산 (textarea 내에서 해당 위치가 보이도록)
+      const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 20;
+      const linesBefore = content.substring(0, highlight.start).split('\n').length - 1;
+      const scrollTop = linesBefore * lineHeight - textarea.clientHeight / 2;
+      
+      textarea.scrollTop = Math.max(0, scrollTop);
+      
+      // 선택 영역을 잠시 강조하기 위해 배경색 변경 (선택 후 원래대로)
+      setTimeout(() => {
+        textarea.setSelectionRange(highlight.start, highlight.end);
+      }, 100);
+    }
   };
 
   const handleAnalyze = () => {
@@ -523,9 +597,11 @@ export default function MorphemePage() {
     // 분석 실행
     const results = analyzeMorphemes(content);
     const topics = categorizeTopics(results);
+    const foundHighlights = findHighlights(content);
     
     setMorphemes(results);
     setTopicKeywords(topics);
+    setHighlights(foundHighlights);
     setIsAnalyzing(false);
   };
 
@@ -536,6 +612,7 @@ export default function MorphemePage() {
         <div className={styles.inputSection}>
           <label className={styles.label}>본문</label>
           <textarea
+            ref={textareaRef}
             className={styles.textarea}
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -556,15 +633,52 @@ export default function MorphemePage() {
             <label className={styles.label}>
               내용 ({content.length}자)
             </label>
+            {highlights.length > 0 && (
+              <div className={styles.highlightSummary}>
+                <span className={styles.forbiddenCount}>
+                  금칙어: {highlights.filter(h => h.type === 'forbidden').length}개
+                </span>
+                <span className={styles.commercialCount}>
+                  상업성: {highlights.filter(h => h.type === 'commercial').length}개
+                </span>
+              </div>
+            )}
             <div 
               className={styles.highlightedContent}
-              dangerouslySetInnerHTML={{ __html: highlightCommercialMents(content) }}
+              dangerouslySetInnerHTML={{ __html: highlightCommercialMents(content, highlights) }}
             />
           </div>
         )}
       </div>
 
       <div className={styles.rightColumn}>
+        {highlights.length > 0 && (
+          <div className={styles.resultBox}>
+            <h3 className={styles.resultTitle}>
+              발견된 항목 ({highlights.length}개)
+            </h3>
+            <div className={styles.highlightList}>
+              {highlights.map((highlight) => (
+                <div
+                  key={highlight.id}
+                  className={`${styles.highlightItem} ${
+                    highlight.type === 'forbidden' ? styles.forbiddenItem : styles.commercialItem
+                  }`}
+                  onClick={() => scrollToHighlight(highlight.id)}
+                >
+                  <div className={styles.highlightType}>
+                    {highlight.type === 'forbidden' ? '금칙어' : '상업성'}
+                  </div>
+                  <div className={styles.highlightText}>{highlight.text}</div>
+                  <div className={styles.highlightContext}>
+                    ...{highlight.context}...
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {morphemes.length > 0 && (
           <div className={styles.resultBox}>
             <h3 className={styles.resultTitle}>형태소</h3>
