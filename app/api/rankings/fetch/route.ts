@@ -19,12 +19,14 @@ type BlogRecord = {
 
 const NAVER_HOSTS = ['blog.naver.com', 'cafe.naver.com'];
 
+// --- [Helper Functions] ---
+
 function normalizeKeyword(value?: string | null): string {
   if (!value) return '';
   return value.replace(/\s+/g, ' ').trim();
 }
 
-// 키워드 비교용: 띄어쓰기 제거
+// 키워드 비교용: 띄어쓰기 제거 및 소문자
 function normalizeKeywordForComparison(value?: string | null): string {
   if (!value) return '';
   return value.replace(/\s+/g, '').toLowerCase();
@@ -77,13 +79,10 @@ function extractBlogIdFromUrl(value?: string | null): string | null {
         .map((segment) => segment.trim())
         .filter(Boolean);
       if (segments.length > 0) {
-        // 카페 이름은 첫 번째 세그먼트
         return segments[0].toLowerCase();
       }
-      // query parameter에서도 카페 이름 추출 시도
       const artParam = url.searchParams.get('art');
       if (artParam) {
-        // art 파라미터가 있으면 URL에서 카페 이름 추출 시도
         const match = value.match(/cafe\.naver\.com\/([^/?#]+)/);
         if (match) {
           return match[1].toLowerCase();
@@ -116,13 +115,11 @@ function collectRecordIdentifiers(record: BlogRecord): string[] {
     identifiers.add(normalizedId);
   }
 
-  // author는 한글도 포함할 수 있으므로 정규식 제한 제거
   const normalizedAuthor = record.author?.trim().toLowerCase();
   if (normalizedAuthor) {
     identifiers.add(normalizedAuthor);
   }
 
-  // keyword도 identifier에 추가 (키워드 매칭을 위해 - 띄어쓰기 제거)
   const normalizedKeyword = normalizeKeywordForComparison(record.keyword);
   if (normalizedKeyword) {
     identifiers.add(normalizedKeyword);
@@ -185,7 +182,6 @@ function collectEntryIdentifiers(entry: Awaited<ReturnType<typeof fetchNaverRank
 
   if (entry.nickname) addIdentifier(entry.nickname);
   
-  // keyword도 identifier에 추가 (키워드 매칭을 위해 - 띄어쓰기 제거)
   if (entry.keyword) {
     const normalizedKeyword = normalizeKeywordForComparison(entry.keyword);
     if (normalizedKeyword) {
@@ -193,23 +189,19 @@ function collectEntryIdentifiers(entry: Awaited<ReturnType<typeof fetchNaverRank
     }
   }
   
-  // 제목도 normalizeText로 처리하여 record와 일치시킴
   const normalizedTitle = normalizeText(entry.title);
   if (normalizedTitle) identifiers.add(normalizedTitle);
 
   if (entry.link) {
     try {
       const url = new URL(entry.link);
-      // blog.naver.com과 cafe.naver.com 모두 처리
       if (url.hostname === 'blog.naver.com' || url.hostname === 'cafe.naver.com') {
         const segments = url.pathname.split('/').filter(Boolean);
         if (segments[0]) addIdentifier(segments[0]);
         const queryId = url.searchParams.get('blogId');
         if (queryId) addIdentifier(queryId);
       }
-    } catch {
-      // ignore invalid url
-    }
+    } catch {}
   }
 
   return Array.from(identifiers);
@@ -220,21 +212,18 @@ function findMatch(
   recordIdentifiers: string[],
   recordKeyword?: string
 ): { identifier: string } | null {
-  // 1. 키워드가 정확히 일치하는 경우 최우선 매칭 (키워드가 있으면)
   if (recordKeyword) {
     const keywordMatch = entryIdentifiers.find(id => id === recordKeyword);
     if (keywordMatch && recordIdentifiers.includes(recordKeyword)) {
-      // 키워드가 일치하고, 다른 identifier도 일치하는지 확인
       for (const recordId of recordIdentifiers) {
         if (!recordId || recordId === recordKeyword) continue;
         if (entryIdentifiers.some((candidate) => candidate === recordId)) {
-          return { identifier: recordId }; // 키워드 + 다른 identifier 일치
+          return { identifier: recordId };
         }
       }
     }
   }
   
-  // 2. 정확히 일치하는 경우 (우선순위 높음)
   for (const recordId of recordIdentifiers) {
     if (!recordId) continue;
     if (entryIdentifiers.some((candidate) => candidate === recordId)) {
@@ -242,10 +231,8 @@ function findMatch(
     }
   }
   
-  // 3. blogId나 id 같은 짧은 식별자는 정확히 일치해야 함
   for (const recordId of recordIdentifiers) {
     if (!recordId) continue;
-    // 짧은 식별자(blogId/id)는 정확히 일치해야 함
     if (recordId.length <= 20 && /^[a-z0-9_\-]+$/.test(recordId)) {
       if (entryIdentifiers.some((candidate) => candidate === recordId)) {
         return { identifier: recordId };
@@ -253,7 +240,6 @@ function findMatch(
     }
   }
   
-  // 4. 긴 식별자(제목, URL 등)는 포함 관계로 매칭
   for (const recordId of recordIdentifiers) {
     if (!recordId) continue;
     if (
@@ -267,6 +253,8 @@ function findMatch(
   return null;
 }
 
+// --- [Main Handler] ---
+
 export async function GET(request: NextRequest) {
   try {
     const adminClient = createAdminClient();
@@ -276,36 +264,26 @@ export async function GET(request: NextRequest) {
     const singleIdParam = searchParams.get('id');
     const idsParamRaw = searchParams.get('ids');
     const idsFromQuery = new Set<string>();
+    
     if (singleIdParam) {
-      singleIdParam
-        .split(',')
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean)
-        .forEach((value) => idsFromQuery.add(value));
+      singleIdParam.split(',').forEach(v => idsFromQuery.add(v.trim().toLowerCase()));
     }
     if (idsParamRaw) {
-      idsParamRaw
-        .split(',')
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean)
-        .forEach((value) => idsFromQuery.add(value));
+      idsParamRaw.split(',').forEach(v => idsFromQuery.add(v.trim().toLowerCase()));
     }
+    
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.max(1, Math.min(Number(limitParam), 200)) : undefined;
 
     let records: BlogRecord[] = [];
 
+    // DB에서 대상 레코드 가져오기
     if (idsFromQuery.size > 0) {
-      const { data, error } = await adminClient
+      const { data } = await adminClient
         .from('blog_records')
         .select('id, keyword, link, title, author')
         .in('id', Array.from(idsFromQuery))
         .limit(limit ?? 200);
-
-      if (error) {
-        console.error('[ranking] supabase in(id) 실패', error);
-      }
-
       records = (data ?? []).filter((record) => !!record.keyword);
     } else if (keywordParam && keywordParam.length > 0) {
       const trimmed = keywordParam.replace(/\s+/g, ' ').trim();
@@ -322,9 +300,6 @@ export async function GET(request: NextRequest) {
         .select('id, keyword, link, title, author')
         .ilike('keyword', `%${trimmed}%`)
         .limit(limit ?? 200);
-
-      console.log('[ranking] supabase eq', eqQuery);
-      console.log('[ranking] supabase ilike', ilikeQuery);
 
       const combined = [...(eqQuery.data ?? []), ...(ilikeQuery.data ?? [])];
       const seen = new Set<string>();
@@ -346,182 +321,131 @@ export async function GET(request: NextRequest) {
     }
 
     const results = [];
-
     console.log(`[ranking] 시작: ${records.length}개 레코드 처리`);
-    
+
     for (const record of records) {
       try {
         console.log(`[ranking] 처리 중: ${record.keyword} (${record.id})`);
-        // 1. 랭킹 가져오기 (타임아웃 60초)
-        const timeout = 60000; // 60초
-        const entries = await fetchSmartblockEntries(record.keyword, request, timeout);
-        console.log(`[ranking] 스마트블록 수집 완료: ${record.keyword} - ${entries.length}개 항목`);
         
-        // record의 identifier 수집
+        // 1. 랭킹 가져오기 (여기서 순위가 계산되어 나옵니다)
+        const entries = await fetchSmartblockEntries(record.keyword, request);
+        
+        console.log(`[ranking] ${record.keyword} (${record.id}) - 가져온 항목 수: ${entries.length}, 순위 있는 항목: ${entries.filter(e => e.rank !== null && e.rank !== undefined).length}`);
+        
+        // 내 글 찾기 (매칭 로직)
         const recordIdentifiers = collectRecordIdentifiers(record);
-        console.log(`[ranking] ${record.keyword} - record identifiers:`, recordIdentifiers);
-        console.log(`[ranking] ${record.keyword} - record data:`, {
-          id: record.id,
-          author: record.author,
-          title: record.title,
-          link: record.link,
-        });
-        
-        // entries에서 매칭되는 항목 찾기
-        // 키워드 정규화 (비교를 위해 - 띄어쓰기 제거)
         const normalizedRecordKeyword = normalizeKeywordForComparison(record.keyword);
         
         let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
+        const normalizedRecordId = record.id?.trim().toLowerCase() || null;
+        
         for (const entry of entries) {
           // rank가 null이면 순위에 포함되지 않는 항목이므로 스킵
-          if (entry.rank === null || entry.rank === undefined) {
-            continue;
+          if (entry.rank === null || entry.rank === undefined) continue;
+
+          // 1) 블로그 ID가 있으면 반드시 동일해야 함
+          if (normalizedRecordId) {
+            const normalizedEntryBlogId =
+              typeof entry.blogId === 'string' && entry.blogId.trim()
+                ? entry.blogId.trim().toLowerCase()
+                : null;
+
+            if (!normalizedEntryBlogId) {
+              console.warn(
+                `[ranking] ${record.keyword} - blogId 없음으로 스킵 (recordId: ${normalizedRecordId})`
+              );
+              continue;
+            }
+
+            if (normalizedEntryBlogId !== normalizedRecordId) {
+              console.warn(
+                `[ranking] ${record.keyword} - blogId 불일치 (recordId: ${normalizedRecordId}, entry blogId: ${normalizedEntryBlogId})`
+              );
+              continue;
+            }
           }
 
-          // 키워드가 일치하는지 확인 (띄어쓰기 제거하여 비교)
-          // entry.keyword가 없거나 빈 문자열이면 같은 키워드로 검색한 결과이므로 통과
           const normalizedEntryKeyword = normalizeKeywordForComparison(entry.keyword);
-          const keywordMatches = normalizedEntryKeyword === normalizedRecordKeyword || !normalizedEntryKeyword;
+          const keywordMatches = normalizedEntryKeyword === normalizedRecordKeyword;
           
-          // 키워드가 있고 일치하지 않으면 스킵 (다른 키워드의 결과일 수 있음)
           if (!keywordMatches) {
-            console.log(`[ranking] ${record.keyword} - rank ${entry.rank} 키워드 불일치 (record: "${record.keyword}" -> "${normalizedRecordKeyword}", entry: "${entry.keyword}" -> "${normalizedEntryKeyword}")`);
+            console.warn(
+              `[ranking] ${record.keyword} - 키워드 불일치로 스킵 (record: ${normalizedRecordKeyword}, entry: ${normalizedEntryKeyword})`
+            );
             continue;
           }
           
           const entryIdentifiers = collectEntryIdentifiers(entry);
-          console.log(`[ranking] ${record.keyword} - entry rank ${entry.rank} identifiers:`, entryIdentifiers);
-          console.log(`[ranking] ${record.keyword} - entry data:`, {
-            rank: entry.rank,
-            blogId: entry.blogId,
-            nickname: entry.nickname,
-            title: entry.title,
-            link: entry.link,
-            keyword: entry.keyword,
-          });
           const matchResult = findMatch(entryIdentifiers, recordIdentifiers, normalizedRecordKeyword);
           if (matchResult) {
-            console.log(`[ranking] ${record.keyword} - 매칭 성공! rank: ${entry.rank}, identifier: ${matchResult.identifier}`);
+            console.log(`[ranking] ${record.keyword} (${record.id}) - 매칭 성공! 순위: ${entry.rank}, 블록: ${entry.blockTitle || 'N/A'}, blogId: ${entry.blogId}`);
             matched = entry;
             break;
-          } else {
-            console.log(`[ranking] ${record.keyword} - rank ${entry.rank} 매칭 실패`);
           }
         }
-
-        const rank = matched && matched.rank !== null && matched.rank !== undefined ? matched.rank : null;
+        
         if (!matched) {
-          console.warn(`[ranking] ${record.keyword} - 매칭된 항목 없음. entries 개수: ${entries.length}, rank가 있는 entries: ${entries.filter(e => e.rank !== null && e.rank !== undefined).length}`);
-          // rank가 있는 entries의 상세 정보 로깅
-          const rankedEntries = entries.filter(e => e.rank !== null && e.rank !== undefined);
-          if (rankedEntries.length > 0) {
-            console.log(`[ranking] ${record.keyword} - rank가 있는 entries:`, rankedEntries.map(e => ({
+          console.warn(`[ranking] ${record.keyword} (${record.id}) - 매칭 실패. 순위 있는 항목들:`, 
+            entries.filter(e => e.rank !== null && e.rank !== undefined).map(e => ({
               rank: e.rank,
               blogId: e.blogId,
-              nickname: e.nickname,
-              title: e.title?.substring(0, 50),
-              link: e.link,
-            })));
-          } else {
-            console.warn(`[ranking] ${record.keyword} - rank가 있는 entry가 없음. 모든 entries:`, entries.map(e => ({
-              rank: e.rank,
-              blogId: e.blogId,
-              nickname: e.nickname,
-              title: e.title?.substring(0, 50),
-            })));
-          }
-        } else {
-          console.log(`[ranking] ${record.keyword} - 매칭 성공! rank: ${rank}, matched entry:`, {
-            rank: matched.rank,
-            blogId: matched.blogId,
-            nickname: matched.nickname,
-            title: matched.title?.substring(0, 50),
-          });
+              title: e.title?.substring(0, 30),
+              blockTitle: e.blockTitle
+            }))
+          );
         }
 
-        // 2. 검색량 가져오기 (타임아웃 10초)
+        // 실제 DB에 반영될 순위
+        const rank = matched ? matched.rank : null;
+
+        console.log(`[ranking] 결과: ${record.keyword} -> rank: ${rank}`);
+
+        // 2. 검색량 가져오기
         let searchVolume: number | null = null;
         try {
           const searchVolumeController = new AbortController();
           const searchVolumeTimeout = setTimeout(() => searchVolumeController.abort(), 10000);
-          
           try {
             const searchCountResult = await fetchNaverSearchCountFromKeywordTool(record.keyword);
             clearTimeout(searchVolumeTimeout);
-            
             if (searchCountResult.total !== null && searchCountResult.total > 0) {
               searchVolume = searchCountResult.total;
-              console.log(`[ranking] 검색량 수집 성공: ${record.keyword} = ${searchVolume}`);
-            } else {
-              console.log(`[ranking] 검색량 수집 실패 또는 0: ${record.keyword}`);
             }
-          } catch (searchVolumeFetchError: any) {
+          } catch (e) {
             clearTimeout(searchVolumeTimeout);
-            if (searchVolumeFetchError.name === 'AbortError') {
-              console.warn(`[ranking] 검색량 조회 타임아웃: ${record.keyword}`);
-            } else {
-              throw searchVolumeFetchError;
-            }
           }
-        } catch (searchVolumeError: any) {
-          console.warn(`[ranking] 검색량 수집 실패: ${record.keyword}`, searchVolumeError?.message);
-          // 검색량 수집 실패해도 랭킹은 업데이트
+        } catch (e) {
+          console.warn(`[ranking] 검색량 실패: ${record.keyword}`);
         }
 
         // 3. 데이터베이스 업데이트
-        const updateData: {
-          ranking: number | null;
-          search_volume?: number | null;
-          updated_at: string;
-        } = {
-          ranking: rank,
+        const updateData: any = {
+          ranking: rank, // 여기서 계산된 순위를 업데이트합니다
           updated_at: new Date().toISOString(),
         };
 
-        // 검색량이 있으면 업데이트에 포함
         if (searchVolume !== null) {
           updateData.search_volume = searchVolume;
         }
-
-        console.log(`[ranking] DB 업데이트 시도: ${record.id} / ${record.keyword}`, {
-          ranking: rank,
-          searchVolume: searchVolume,
-          updateData,
-        });
 
         const { data: updateResult, error } = await adminClient
           .from('blog_records')
           .update(updateData)
           .eq('id', record.id)
           .eq('keyword', record.keyword)
-          .select('id, ranking, search_volume');
+          .select();
 
         if (error) {
-          console.error(`[ranking] DB 업데이트 실패: ${record.id} / ${record.keyword}`, {
-            error: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            updateData,
-          });
+          console.error(`[ranking] DB 업데이트 실패: ${record.id}`, error.message);
         } else {
-          const updatedCount = updateResult?.length || 0;
-          if (updatedCount > 0) {
-            console.log(`[ranking] DB 업데이트 성공: ${record.id} / ${record.keyword}`, {
-              updatedRows: updatedCount,
-              updatedData: updateResult?.[0],
-              ranking: rank,
-              searchVolume: searchVolume,
-            });
-            
-            // Activity log 기록
+          // Activity Log 기록
+          if ((updateResult?.length || 0) > 0) {
             try {
               const matchedAny = matched as any;
               await adminClient.from('record_activity_logs').insert({
                 action: 'update',
                 record_id: record.id,
                 keyword: record.keyword,
-                actor_id: null,
                 actor_name: 'crawler',
                 actor_role: 'system',
                 metadata: {
@@ -530,21 +454,13 @@ export async function GET(request: NextRequest) {
                   link: matched?.link ?? null,
                   nickname: matched?.nickname ?? null,
                   fetchedAt: new Date().toISOString(),
-                  // 블록 정보 추가
                   blockTitle: matchedAny?.blockTitle ?? null,
-                  blockIndex: matchedAny?.blockIndex ?? null,
                   blockRank: matchedAny?.blockRank ?? null,
                 },
               });
-            } catch (logError: any) {
-              console.warn(`[ranking] Activity log 기록 실패: ${record.id} / ${record.keyword}`, logError?.message);
+            } catch (logError) {
+              console.warn('[ranking] 로그 기록 실패', logError);
             }
-
-            // 랭킹 업데이트 시에는 점수를 기록하지 않음
-            // 매일 오전 10시 기준으로 calculate API를 통해 전체 재계산됨
-            // 여기서는 랭킹 정보만 업데이트하고, 점수는 calculate API에서 처리
-          } else {
-            console.warn(`[ranking] DB 업데이트: 매칭되는 행이 없음 (0개 업데이트됨): ${record.id} / ${record.keyword}`);
           }
         }
 
@@ -553,76 +469,42 @@ export async function GET(request: NextRequest) {
           keyword: record.keyword,
           ranking: rank,
           searchVolume: searchVolume,
-          nickname: matched?.nickname ?? null,
-          link: matched?.link ?? null,
           success: !error && (updateResult?.length || 0) > 0,
           error: error?.message ?? null,
         });
+
+        // 딜레이 (여러 건 처리 시)
+        if (records.length > 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
       } catch (err: any) {
-        console.error(`[ranking] ${record.keyword} 처리 실패`, err);
+        console.error(`[ranking] ${record.keyword} 처리 에러`, err);
         results.push({
           id: record.id,
           keyword: record.keyword,
-          ranking: null,
-          searchVolume: null,
           success: false,
-          error: err?.message ?? '스마트블록 조회 실패',
+          error: err?.message ?? 'Unknown Error',
         });
       }
-
-      // API 호출 간격 조절 (1시간마다 실행되므로 최소 딜레이만 유지)
-      if (records.length > 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1000)); // 여러 레코드 조회 시에만 1초 대기
-      }
     }
-
-    const successCount = results.filter((r) => r.success).length;
-    const failureCount = results.filter((r) => !r.success).length;
-    const rankingUpdatedCount = results.filter((r) => r.ranking !== null && r.ranking !== undefined).length;
-    const searchVolumeUpdatedCount = results.filter((r) => r.searchVolume !== null && r.searchVolume !== undefined).length;
-
-    console.log('[ranking] 완료:', {
-      requestedKeyword: keywordParam,
-      recordCount: records.length,
-      successCount,
-      failureCount,
-      rankingUpdatedCount,
-      searchVolumeUpdatedCount,
-      results: results.map((r) => ({
-        keyword: r.keyword,
-        ranking: r.ranking,
-        searchVolume: r.searchVolume,
-        success: r.success,
-        error: r.error,
-      })),
-    });
 
     return NextResponse.json({
       success: true,
       updated: results,
       summary: {
         total: records.length,
-        success: successCount,
-        failure: failureCount,
-        rankingUpdated: rankingUpdatedCount,
-        searchVolumeUpdated: searchVolumeUpdatedCount,
+        success: results.filter(r => r.success).length,
       },
     });
   } catch (error: any) {
-    console.error('[ranking] 업데이트 실패', {
-      error: error?.message,
-      stack: error?.stack,
-      name: error?.name,
-    });
     return NextResponse.json(
-      { 
-        error: error?.message ?? '랭킹 수집 중 오류가 발생했습니다.',
-        details: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
-      },
+      { error: error?.message ?? 'Server Error' },
       { status: 500 }
     );
   }
 }
+
+// --- [Ranking Logic] ---
 
 async function fetchSmartblockEntries(
   keyword: string,
@@ -631,298 +513,144 @@ async function fetchSmartblockEntries(
 ): Promise<Awaited<ReturnType<typeof fetchNaverRanking>>> {
   try {
     const smartblockUrl = new URL('/api/smartblock', request.url);
-    
-    // 타임아웃을 위한 AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     
-    try {
-      const response = await fetch(smartblockUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        cache: 'no-store',
-        body: JSON.stringify({ keyword }),
-        signal: controller.signal,
-      });
+    const response = await fetch(smartblockUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ keyword }),
+      signal: controller.signal,
+    });
 
-      clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        console.warn(`[ranking] 스마트블록 API 응답 실패: ${response.status} - ${keyword}`);
-        return [];
-      }
+    if (!response.ok) {
+      console.warn(`[ranking] 스마트블록 API 실패: ${response.status}`);
+      return [];
+    }
 
-      const json = await response.json();
-      const smartBlocks = Array.isArray(json.smartBlocks) ? json.smartBlocks : [];
-      console.log(`[ranking] 스마트블록 수집: ${keyword} - 블록 개수: ${smartBlocks.length}`);
-      const results: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
+    const json = await response.json();
+    const smartBlocks = Array.isArray(json.smartBlocks) ? json.smartBlocks : [];
+    const results: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
 
     const extractBlogId = (value?: string | null): string | null => {
       if (!value) return null;
       const trimmed = value.trim();
       if (!trimmed) return null;
-      // blog.naver.com 매칭
       const blogMatch = trimmed.match(/blog\.naver\.com\/([^/?#]+)/);
       if (blogMatch) return blogMatch[1].toLowerCase();
-      // cafe.naver.com 매칭 (카페 이름 추출)
       const cafeMatch = trimmed.match(/cafe\.naver\.com\/([^/?#]+)/);
       if (cafeMatch) return cafeMatch[1].toLowerCase();
       const fromUrl = extractBlogIdFromUrl(trimmed);
       return fromUrl ? fromUrl.toLowerCase() : null;
     };
 
-    // 인기글 블록 찾기 ("인기글", "' 키워드' 인기글", "교육학문 인기글" 등)
-    const popularBlock = smartBlocks.find(
-      (block: any) => block?.title && block.title.includes('인기글')
-    );
-
-    // 스마트블록과 일반 검색 결과를 구분
-    const smartBlockBlocks = smartBlocks.filter(
-      (block: any) => block?.title && !block.title.includes('일반 검색 결과')
-    );
-    const generalSearchBlocks = smartBlocks.filter(
-      (block: any) => block?.title && block.title.includes('일반 검색 결과')
-    );
-
-    // 중복 체크를 위한 Set (link와 blogId/nickname 조합으로 중복 확인)
-    const seenEntries = new Set<string>();
-    const getEntryKey = (link: string, blogId: string, nickname: string): string => {
-      const normalizedLink = normalizeUrl(link)?.toLowerCase() || '';
-      const normalizedBlogId = blogId?.toLowerCase() || '';
-      const normalizedNickname = normalizeText(nickname) || '';
-      return `${normalizedLink}|${normalizedBlogId}|${normalizedNickname}`;
-    };
-
-    // 실제 순위를 가져올 블록 결정
-    // 1. 인기글 블록이 있으면 → 인기글 블록의 index를 순위로 사용
-    // 2. 인기글 블록이 없으면 → 첫 번째 스마트블록의 index를 순위로 사용
-    const rankingBlock = popularBlock || (smartBlockBlocks.length > 0 ? smartBlockBlocks[0] : null);
-    console.log(`[ranking] 순위 블록 결정: ${keyword} - 인기글 블록: ${!!popularBlock}, 스마트블록 개수: ${smartBlockBlocks.length}, 순위 블록: ${rankingBlock?.title || '없음'}`);
-
-    // 1. 실제 순위 블록 처리 (인기글 블록 또는 첫 번째 스마트블록)
-    if (rankingBlock) {
-      const items = Array.isArray(rankingBlock?.data) ? rankingBlock.data : [];
-      console.log(`[ranking] 순위 블록 처리: ${keyword} - 아이템 개수: ${items.length}`);
-      items.forEach((item: any, index: number) => {
-        const rawBlogId =
-          typeof item?.authorId === 'string'
-            ? item.authorId
-            : typeof item?.blogId === 'string'
-            ? item.blogId
-            : undefined;
-        const blogId =
-          extractBlogId(rawBlogId) ??
-          extractBlogId(typeof item?.profileLink === 'string' ? item.profileLink : undefined) ??
-          extractBlogId(typeof item?.link === 'string' ? item.link : undefined);
-
-        const nicknameRaw =
-          typeof item?.author === 'string'
-            ? item.author
-            : typeof item?.nickname === 'string'
-            ? item.nickname
-            : undefined;
-        const nickname = nicknameRaw ? nicknameRaw.trim() : undefined;
-
-        if (!blogId && !nickname) {
-          return;
-        }
-
-        const title =
-          typeof item?.title === 'string' ? item.title.trim() : '';
-        const link =
-          typeof item?.link === 'string' ? item.link : '';
-        const snippet =
-          typeof item?.content === 'string' ? item.content.trim() : undefined;
-
-        // ader.naver.com/v1/ 링크 제외
-        if (link && link.startsWith('https://ader.naver.com/v1/')) {
-          return;
-        }
-
-        const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
-        seenEntries.add(entryKey);
-
-        // 실제 순위: item.index를 그대로 사용 (1, 2, 3...)
-        const actualRank = typeof item?.index === 'number' && item.index > 0 ? item.index : index + 1;
-
-        results.push({
-          keyword,
-          blogId: blogId ?? '',
-          title,
-          link,
-          rank: actualRank, // 실제 검색 순위 (인기글 블록 또는 첫 번째 스마트블록)
-          nickname,
-          snippet,
-          // 블록 정보 추가 (타입 확장)
-          blockTitle: rankingBlock?.title || null,
-          blockIndex: popularBlock ? 0 : 0, // 순위 블록은 항상 0
-          blockRank: actualRank, // 블록 내 순위
-        } as any);
-      });
-      console.log(`[ranking] 순위 블록 처리 완료: ${keyword} - 결과 개수: ${results.length}`);
+    // 1. 블록 분류
+    // 인기글 블록 찾기: "인기글"이 포함된 블록 (예: "교육·학문 인기글", "'키워드' 인기글" 등)
+    const popularBlock = smartBlocks.find((block: any) => {
+      const title = block?.title?.trim() || '';
+      return title.includes('인기글');
+    });
+    
+    console.log(`[ranking] ${keyword} - 발견된 블록들:`, smartBlocks.map((b: any) => b?.title).filter(Boolean));
+    if (popularBlock) {
+      console.log(`[ranking] ${keyword} - 인기글 블록 발견: "${popularBlock.title}"`);
     } else {
-      console.warn(`[ranking] 순위 블록 없음: ${keyword} - 인기글 블록: ${!!popularBlock}, 스마트블록 개수: ${smartBlockBlocks.length}`);
+      console.log(`[ranking] ${keyword} - 인기글 블록 없음`);
+    }
+    
+    const smartBlockBlocks = smartBlocks.filter((block: any) => block?.title && !block.title.includes('일반 검색 결과'));
+    
+    // 2. 순위 측정 대상 블록 선정 (인기글 > 첫번째 스마트블록)
+    const rankingBlock = popularBlock || (smartBlockBlocks.length > 0 ? smartBlockBlocks[0] : null);
+    
+    if (rankingBlock) {
+      console.log(`[ranking] ${keyword} - 순위 측정 대상 블록: "${rankingBlock.title}" (항목 수: ${Array.isArray(rankingBlock.data) ? rankingBlock.data.length : 0})`);
     }
 
-    // 2. 다른 스마트블록 처리 (인기글 블록 제외, 매칭용으로만 사용, 순위는 null)
-    for (const block of smartBlockBlocks) {
-      // 인기글 블록은 이미 처리했으므로 스킵
-      if (block === rankingBlock) {
-        continue;
-      }
+    const seenEntries = new Set<string>();
+    const getEntryKey = (link: string, blogId: string) => 
+      `${normalizeUrl(link)?.toLowerCase()}|${blogId.toLowerCase()}`;
 
-      const items = Array.isArray(block?.data) ? block.data : [];
-      
-      items.forEach((item: any, forEachIndex: number) => {
-        const rawBlogId =
-          typeof item?.authorId === 'string'
-            ? item.authorId
-            : typeof item?.blogId === 'string'
-            ? item.blogId
-            : undefined;
-        const blogId =
-          extractBlogId(rawBlogId) ??
-          extractBlogId(typeof item?.profileLink === 'string' ? item.profileLink : undefined) ??
-          extractBlogId(typeof item?.link === 'string' ? item.link : undefined);
-
-        const nicknameRaw =
-          typeof item?.author === 'string'
-            ? item.author
-            : typeof item?.nickname === 'string'
-            ? item.nickname
-            : undefined;
-        const nickname = nicknameRaw ? nicknameRaw.trim() : undefined;
-
-        if (!blogId && !nickname) {
-          return;
-        }
-
-        const title =
-          typeof item?.title === 'string' ? item.title.trim() : '';
-        const link =
-          typeof item?.link === 'string' ? item.link : '';
-        const snippet =
-          typeof item?.content === 'string' ? item.content.trim() : undefined;
-
-        // ader.naver.com/v1/ 링크 제외
-        if (link && link.startsWith('https://ader.naver.com/v1/')) {
-          return;
-        }
-
-        const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
-        
-        // 순위 블록에 이미 있는 항목은 스킵 (순위 블록의 순위가 우선)
-        if (seenEntries.has(entryKey)) {
-          return;
-        }
-
-        // 다른 블록의 항목은 순위에 포함하지 않음 (매칭용으로만 사용)
-        // 하지만 블록 정보는 저장
-        seenEntries.add(entryKey);
-
-        const blockTitle = typeof block?.title === 'string' ? block.title : null;
-        const blockRank = typeof item?.index === 'number' && item.index > 0 ? item.index : forEachIndex + 1;
-        
-        // 다른 블록은 순위에 포함하지 않지만, 블록 정보는 저장 (매칭용)
-        // rank는 null로 설정하여 순위에 포함되지 않음을 표시
-        results.push({
-          keyword,
-          blogId: blogId ?? '',
-          title,
-          link,
-          rank: null, // 다른 블록은 순위에 포함하지 않음
-          nickname,
-          snippet,
-          // 블록 정보 추가 (타입 확장)
-          blockTitle,
-          blockIndex: -1, // 순위 블록이 아닌 블록은 -1
-          blockRank, // 블록 내 순위
-        } as any);
-      });
-    }
-
-    // 3. 일반 검색 결과 처리 (순위에 포함하지 않음, 매칭용으로만 사용)
-    for (const block of generalSearchBlocks) {
-      const items = Array.isArray(block?.data) ? block.data : [];
+    // 3. [핵심] 순위 블록 처리 (순위를 1, 2, 3... 강제 할당)
+    if (rankingBlock) {
+      const items = Array.isArray(rankingBlock.data) ? rankingBlock.data : [];
       
       items.forEach((item: any, index: number) => {
-        const rawBlogId =
-          typeof item?.authorId === 'string'
-            ? item.authorId
-            : typeof item?.blogId === 'string'
-            ? item.blogId
-            : undefined;
-        const blogId =
-          extractBlogId(rawBlogId) ??
-          extractBlogId(typeof item?.profileLink === 'string' ? item.profileLink : undefined) ??
-          extractBlogId(typeof item?.link === 'string' ? item.link : undefined);
+        const rawBlogId = item?.authorId || item?.blogId;
+        const blogId = extractBlogId(rawBlogId) ?? 
+                       extractBlogId(item?.profileLink) ?? 
+                       extractBlogId(item?.link);
 
-        const nicknameRaw =
-          typeof item?.author === 'string'
-            ? item.author
-            : typeof item?.nickname === 'string'
-            ? item.nickname
-            : undefined;
+        const nicknameRaw = item?.author || item?.nickname;
         const nickname = nicknameRaw ? nicknameRaw.trim() : undefined;
 
-        if (!blogId && !nickname) {
-          return;
-        }
+        if (!blogId && !nickname) return;
 
-        const title =
-          typeof item?.title === 'string' ? item.title.trim() : '';
-        const link =
-          typeof item?.link === 'string' ? item.link : '';
-        const snippet =
-          typeof item?.content === 'string' ? item.content.trim() : undefined;
-
-        // ader.naver.com/v1/ 링크 제외
-        if (link && link.startsWith('https://ader.naver.com/v1/')) {
-          return;
-        }
-
-        const entryKey = getEntryKey(link, blogId ?? '', nickname ?? '');
+        const title = typeof item?.title === 'string' ? item.title.trim() : '';
+        const link = typeof item?.link === 'string' ? item.link : '';
         
-        // 이미 처리된 항목은 스킵
-        if (seenEntries.has(entryKey)) {
-          return;
-        }
+        if (link && link.startsWith('https://ader.naver.com/')) return;
 
+        const entryKey = getEntryKey(link, blogId ?? '');
         seenEntries.add(entryKey);
 
-        // 일반 검색 결과는 순위에 포함하지 않음 (매칭용으로만 사용)
+        // [FIX] API가 주는 index 대신 배열의 index + 1을 사용하여 실제 노출 순위 반영
+        const actualRank = index + 1;
+
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: null, // 일반 검색 결과는 순위에 포함하지 않음
+          rank: actualRank, // <-- 여기가 1, 2, 3... 으로 들어감
           nickname,
-          snippet,
-          // 블록 정보 추가 (타입 확장)
-          blockTitle: block?.title || '일반 검색 결과',
-          blockIndex: -1, // 일반 검색 결과는 -1
-          blockRank: index + 1, // 블록 내 순위
+          snippet: item?.content,
+          blockTitle: rankingBlock.title,
+          blockRank: actualRank,
         } as any);
       });
     }
 
-      return results;
-    } catch (fetchError: any) {
-      clearTimeout(timeoutId);
-      if (fetchError.name === 'AbortError') {
-        console.warn(`[ranking] 스마트블록 조회 타임아웃 (${timeout}ms): ${keyword}`);
-      } else {
-        console.error(`[ranking] 스마트블록 기반 순위 수집 실패: ${keyword}`, fetchError?.message);
-      }
-      return [];
+    // 4. 나머지 블록 처리 (순위는 null, 매칭 확인용)
+    for (const block of smartBlocks) {
+      if (block === rankingBlock) continue; // 이미 처리함
+      
+      const items = Array.isArray(block.data) ? block.data : [];
+      items.forEach((item: any, index: number) => {
+        const rawBlogId = item?.authorId || item?.blogId;
+        const blogId = extractBlogId(rawBlogId) ?? 
+                       extractBlogId(item?.profileLink) ?? 
+                       extractBlogId(item?.link);
+        const nickname = item?.author || item?.nickname;
+        
+        if (!blogId && !nickname) return;
+
+        const link = typeof item?.link === 'string' ? item.link : '';
+        const entryKey = getEntryKey(link, blogId ?? '');
+        
+        if (seenEntries.has(entryKey)) return;
+        seenEntries.add(entryKey);
+
+        results.push({
+          keyword,
+          blogId: blogId ?? '',
+          title: item?.title || '',
+          link,
+          rank: null, // 순위 집계 대상 아님
+          nickname: nickname || '',
+          snippet: item?.content,
+          blockTitle: block.title,
+          blockRank: index + 1,
+        } as any);
+      });
     }
-  } catch (error) {
-    console.error('[ranking] 스마트블록 기반 순위 수집 실패', error);
+
+    return results;
+  } catch (fetchError) {
+    console.error(`[ranking] 스마트블록 에러: ${keyword}`, fetchError);
     return [];
   }
 }
-
-

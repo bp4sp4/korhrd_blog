@@ -342,10 +342,15 @@ async function scrapeSmartBlocks(
         );
       }
 
-      const blockCount = Math.min(4, roots.length);
+      // 실제 스마트블록 모듈이 포함된 루트만 선별
+      const candidateRoots = roots.filter((root) =>
+        root.querySelector('.fds-ugc-block-mod, .sds-comps-vertical-layout[data-template-id="ugcItem"]')
+      );
+
+      const blockCount = Math.min(8, candidateRoots.length || roots.length);
 
       for (let blockIndex = 0; blockIndex < blockCount; blockIndex += 1) {
-        const root = roots[blockIndex] as Element;
+        const root = (candidateRoots[blockIndex] ?? roots[blockIndex]) as Element;
         let blockTitle = '';
         const titleSelectors = [
           '.fds-comps-header-headline .fds-comps-text',

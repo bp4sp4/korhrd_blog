@@ -8,7 +8,10 @@ export interface NaverSearchResult {
   link: string;
   nickname?: string;
   snippet?: string;
-  rank: number;
+  rank: number | null;
+  blockTitle?: string;
+  blockIndex?: number;
+  blockRank?: number;
 }
 
 const NAVER_REVIEW_ENDPOINT =
