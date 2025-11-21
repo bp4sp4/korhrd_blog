@@ -589,71 +589,30 @@ export default function TableClient({
   // 랭킹 업데이트 함수 (수동 호출 가능)
   const updateRankings = useCallback(async () => {
       try {
-        console.log('[blog-records] 랭킹 자동 업데이트 시작');
+        console.log('[blog-records] 랭킹 자동 업데이트 시작 (전체 레코드 처리)');
         
-        // 모든 고유 ID 수집
-        const ids = Array.from(
-          new Set(
-            data
-              .map((item) => item.id?.trim().toLowerCase())
-              .filter((value): value is string => !!value)
-          )
-        );
+        // 파라미터 없이 호출하면 서버에서 모든 레코드를 처리
+        // limit 파라미터를 크게 설정하여 모든 레코드 처리
+        const response = await fetch(`/api/rankings/fetch?limit=10000`, {
+          method: 'GET',
+          cache: 'no-store', // 캐시 방지
+        });
 
-        if (ids.length === 0) {
-          console.warn('[blog-records] 랭킹 업데이트할 아이디가 없습니다.');
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.error('[blog-records] 랭킹 업데이트 실패:', result?.error || '알 수 없는 오류');
           return;
         }
 
-        console.log(`[blog-records] 총 ${ids.length}개 아이디의 랭킹 업데이트 시작`);
+        // API 응답에서 실제 업데이트된 항목 확인
+        const updates = Array.isArray(result?.updated) ? result.updated : [];
+        const successCount = updates.filter((u: any) => u.success && (u.ranking !== null || u.searchVolume !== null)).length;
+        const rankingUpdated = updates.filter((u: any) => u.success && u.ranking !== null).length;
+        const searchVolumeUpdated = updates.filter((u: any) => u.success && u.searchVolume !== null).length;
+        const totalProcessed = result?.summary?.total || updates.length;
 
-        // API 호출 (최대 200개씩 처리)
-        const batchSize = 200;
-        const batches = [];
-        for (let i = 0; i < ids.length; i += batchSize) {
-          batches.push(ids.slice(i, i + batchSize));
-        }
-
-        let totalUpdated = 0;
-        let totalSuccess = 0;
-        let totalFailed = 0;
-
-        for (const batch of batches) {
-          const params = new URLSearchParams();
-          params.set('ids', batch.join(','));
-          params.set('limit', String(batch.length));
-
-          try {
-            const response = await fetch(`/api/rankings/fetch?${params.toString()}`, {
-              method: 'GET',
-              cache: 'no-store', // 캐시 방지
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-              console.error('[blog-records] 랭킹 업데이트 실패:', result?.error || '알 수 없는 오류');
-              totalFailed += batch.length;
-              continue;
-            }
-
-            // API 응답에서 실제 업데이트된 항목 확인
-            const updates = Array.isArray(result?.updated) ? result.updated : [];
-            const successCount = updates.filter((u: any) => u.success && (u.ranking !== null || u.searchVolume !== null)).length;
-            const rankingUpdated = updates.filter((u: any) => u.success && u.ranking !== null).length;
-            const searchVolumeUpdated = updates.filter((u: any) => u.success && u.searchVolume !== null).length;
-
-            totalUpdated += updates.length;
-            totalSuccess += successCount;
-
-            console.log(`[blog-records] 배치 업데이트 완료: ${batch.length}개 요청, ${successCount}개 성공 (랭킹: ${rankingUpdated}, 검색량: ${searchVolumeUpdated})`);
-          } catch (batchError: any) {
-            console.error(`[blog-records] 배치 처리 중 오류:`, batchError);
-            totalFailed += batch.length;
-          }
-        }
-
-        console.log(`[blog-records] 전체 업데이트 완료: 총 ${ids.length}개 중 ${totalSuccess}개 성공, ${totalFailed}개 실패`);
+        console.log(`[blog-records] 전체 업데이트 완료: 총 ${totalProcessed}개 처리, ${successCount}개 성공 (랭킹: ${rankingUpdated}, 검색량: ${searchVolumeUpdated})`);
 
         // 랭킹 업데이트 실행 시 시간 기록 (성공 여부와 관계없이)
         const updateTime = new Date().toISOString();
@@ -668,7 +627,7 @@ export default function TableClient({
         }
 
         // 업데이트가 성공한 경우에만 페이지 새로고침
-        if (totalSuccess > 0) {
+        if (successCount > 0) {
           console.log('[blog-records] 페이지 새로고침 시작...');
           // 약간의 지연 후 새로고침 (DB 업데이트가 완료될 시간 확보)
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -680,11 +639,11 @@ export default function TableClient({
       } catch (error: any) {
         console.error('[blog-records] 랭킹 자동 업데이트 중 오류:', error);
       }
-    }, [data, router]);
+    }, [router]);
 
   // 한국 시간(KST) 기준 매 정시마다 모든 기록의 랭킹 자동 업데이트
   useEffect(() => {
-    if (data.length === 0) return;
+    // 서버에서 모든 레코드를 처리하므로 data.length 체크 불필요
 
     // 한국 시간(KST) 기준으로 다음 정시까지의 시간 계산
     const getTimeUntilNextHour = () => {
@@ -736,7 +695,7 @@ export default function TableClient({
         clearInterval(intervalId);
       }
     };
-  }, [data.length, router, data]);
+  }, [updateRankings]);
 
   return (
     <div>

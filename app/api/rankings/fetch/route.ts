@@ -312,12 +312,44 @@ export async function GET(request: NextRequest) {
         return normalized === lower || normalized.includes(lower);
       });
     } else {
-      const { data } = await adminClient
+      // 파라미터가 없으면 모든 레코드 처리 (limit이 크면 모든 레코드 가져오기)
+      const query = adminClient
         .from('blog_records')
         .select('id, keyword, link, title, author')
-        .order('created_at', { ascending: false })
-        .limit(limit ?? 200);
-      records = data ?? [];
+        .order('created_at', { ascending: false });
+      
+      if (limit && limit < 10000) {
+        // limit이 10000 미만이면 제한 적용
+        const { data } = await query.limit(limit);
+        records = data ?? [];
+      } else {
+        // limit이 크거나 없으면 모든 레코드 가져오기 (페이지네이션)
+        let allRecords: BlogRecord[] = [];
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+          const { data, error } = await query
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+          
+          if (error) {
+            console.error('[ranking] 레코드 조회 오류:', error);
+            break;
+          }
+
+          if (data && data.length > 0) {
+            allRecords = [...allRecords, ...data];
+            page++;
+            hasMore = data.length === pageSize;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        records = allRecords;
+        console.log(`[ranking] 전체 레코드 조회 완료: ${records.length}개`);
+      }
     }
 
     const results = [];
@@ -563,20 +595,16 @@ async function fetchSmartblockEntries(
     
     const smartBlockBlocks = smartBlocks.filter((block: any) => block?.title && !block.title.includes('일반 검색 결과'));
     
-    // 2. 순위 측정 대상 블록 선정 (인기글 > 첫번째 스마트블록)
-    const rankingBlock = popularBlock || (smartBlockBlocks.length > 0 ? smartBlockBlocks[0] : null);
-    
-    if (rankingBlock) {
-      console.log(`[ranking] ${keyword} - 순위 측정 대상 블록: "${rankingBlock.title}" (항목 수: ${Array.isArray(rankingBlock.data) ? rankingBlock.data.length : 0})`);
-    }
-
-    const seenEntries = new Set<string>();
+    // 2. 모든 스마트블록 처리 (각 블록의 항목에 순위 부여)
+    // 인기글 블록이 있으면 우선 처리, 그 다음 다른 블록들 처리
+    const seenEntries = new Map<string, { rank: number; blockTitle: string; blockRank: number }>();
     const getEntryKey = (link: string, blogId: string) => 
       `${normalizeUrl(link)?.toLowerCase()}|${blogId.toLowerCase()}`;
 
-    // 3. [핵심] 순위 블록 처리 (순위를 1, 2, 3... 강제 할당)
-    if (rankingBlock) {
-      const items = Array.isArray(rankingBlock.data) ? rankingBlock.data : [];
+    // 2-1. 인기글 블록 우선 처리
+    if (popularBlock) {
+      const items = Array.isArray(popularBlock.data) ? popularBlock.data : [];
+      console.log(`[ranking] ${keyword} - 인기글 블록 처리: "${popularBlock.title}" (항목 수: ${items.length})`);
       
       items.forEach((item: any, index: number) => {
         const rawBlogId = item?.authorId || item?.blogId;
@@ -595,56 +623,83 @@ async function fetchSmartblockEntries(
         if (link && link.startsWith('https://ader.naver.com/')) return;
 
         const entryKey = getEntryKey(link, blogId ?? '');
-        seenEntries.add(entryKey);
-
-        // [FIX] API가 주는 index 대신 배열의 index + 1을 사용하여 실제 노출 순위 반영
         const actualRank = index + 1;
+
+        // 인기글 블록은 우선순위가 높으므로 항상 저장 (덮어쓰기)
+        seenEntries.set(entryKey, {
+          rank: actualRank,
+          blockTitle: popularBlock.title,
+          blockRank: actualRank,
+        });
 
         results.push({
           keyword,
           blogId: blogId ?? '',
           title,
           link,
-          rank: actualRank, // <-- 여기가 1, 2, 3... 으로 들어감
+          rank: actualRank,
           nickname,
           snippet: item?.content,
-          blockTitle: rankingBlock.title,
+          blockTitle: popularBlock.title,
           blockRank: actualRank,
         } as any);
       });
     }
 
-    // 4. 나머지 블록 처리 (순위는 null, 매칭 확인용)
-    for (const block of smartBlocks) {
-      if (block === rankingBlock) continue; // 이미 처리함
+    // 2-2. 나머지 스마트블록 처리 (각 블록의 순위 부여)
+    for (const block of smartBlockBlocks) {
+      if (block === popularBlock) continue; // 인기글 블록은 이미 처리함
       
       const items = Array.isArray(block.data) ? block.data : [];
+      console.log(`[ranking] ${keyword} - 블록 처리: "${block.title}" (항목 수: ${items.length})`);
+      
       items.forEach((item: any, index: number) => {
         const rawBlogId = item?.authorId || item?.blogId;
         const blogId = extractBlogId(rawBlogId) ?? 
                        extractBlogId(item?.profileLink) ?? 
                        extractBlogId(item?.link);
-        const nickname = item?.author || item?.nickname;
+        const nicknameRaw = item?.author || item?.nickname;
+        const nickname = nicknameRaw ? nicknameRaw.trim() : undefined;
         
         if (!blogId && !nickname) return;
 
+        const title = typeof item?.title === 'string' ? item.title.trim() : '';
         const link = typeof item?.link === 'string' ? item.link : '';
-        const entryKey = getEntryKey(link, blogId ?? '');
         
-        if (seenEntries.has(entryKey)) return;
-        seenEntries.add(entryKey);
+        if (link && link.startsWith('https://ader.naver.com/')) return;
 
-        results.push({
-          keyword,
-          blogId: blogId ?? '',
-          title: item?.title || '',
-          link,
-          rank: null, // 순위 집계 대상 아님
-          nickname: nickname || '',
-          snippet: item?.content,
-          blockTitle: block.title,
-          blockRank: index + 1,
-        } as any);
+        const entryKey = getEntryKey(link, blogId ?? '');
+        const actualRank = index + 1;
+
+        // 이미 인기글 블록에 있으면 순위 유지, 없으면 이 블록의 순위 사용
+        const existing = seenEntries.get(entryKey);
+        if (!existing) {
+          // 이 블록에서 처음 발견된 항목이면 순위 부여
+          seenEntries.set(entryKey, {
+            rank: actualRank,
+            blockTitle: block.title,
+            blockRank: actualRank,
+          });
+
+          results.push({
+            keyword,
+            blogId: blogId ?? '',
+            title,
+            link,
+            rank: actualRank, // 이 블록의 순위 부여
+            nickname,
+            snippet: item?.content,
+            blockTitle: block.title,
+            blockRank: actualRank,
+          } as any);
+        } else {
+          // 이미 다른 블록에 있으면 순위는 유지하되, 정보만 추가 (중복 방지)
+          // 인기글 블록이 아닌 경우에만 추가 정보로 기록
+          if (existing.blockTitle.includes('인기글')) {
+            // 인기글 블록에 이미 있으면 추가하지 않음
+            return;
+          }
+        }
       });
     }
 
