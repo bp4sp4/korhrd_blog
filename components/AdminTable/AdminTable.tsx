@@ -469,8 +469,8 @@ export default function AdminTable({
     setShowSuccessMessage(false);
 
     try {
-      // limit 파라미터 없이 호출하면 모든 레코드 처리
-      const response = await fetch(`/api/rankings/fetch?limit=200`, {
+      // limit 파라미터 없이 호출하면 모든 레코드 처리 (서버에서 페이지네이션으로 전체 가져옴)
+      const response = await fetch(`/api/rankings/fetch`, {
         method: 'GET',
       });
 

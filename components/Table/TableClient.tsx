@@ -641,7 +641,7 @@ export default function TableClient({
       }
     }, [router]);
 
-  // 한국 시간(KST) 기준 오전 10시와 오후 5시에 랭킹 자동 업데이트
+  // 한국 시간(KST) 기준 오전 10시와 오후 5시에만 랭킹 자동 업데이트
   useEffect(() => {
     // 서버에서 모든 레코드를 처리하므로 data.length 체크 불필요
 
@@ -669,7 +669,7 @@ export default function TableClient({
       const kstMinute = parseInt(kstParts.find(p => p.type === 'minute')?.value || '0', 10);
       const kstSecond = parseInt(kstParts.find(p => p.type === 'second')?.value || '0', 10);
       
-      // KST 기준으로 다음 스케줄 시간 계산
+      // KST 기준으로 다음 스케줄 시간 계산 (10시 또는 17시만)
       const currentTimeInMinutes = kstHour * 60 + kstMinute;
       const schedule10InMinutes = 10 * 60; // 10:00
       const schedule17InMinutes = 17 * 60; // 17:00
@@ -677,14 +677,28 @@ export default function TableClient({
       let nextScheduleHour: number;
       let nextScheduleDay = kstDay;
       
+      // 정확히 10시 또는 17시인지 확인
+      const isExactly10 = kstHour === 10 && kstMinute === 0 && kstSecond === 0;
+      const isExactly17 = kstHour === 17 && kstMinute === 0 && kstSecond === 0;
+      
+      // 정확히 10시 또는 17시가 아니면 다음 스케줄 계산
       if (currentTimeInMinutes < schedule10InMinutes) {
         // 현재 시간이 10시 이전이면 오늘 10시
         nextScheduleHour = 10;
       } else if (currentTimeInMinutes < schedule17InMinutes) {
         // 현재 시간이 10시 이후 17시 이전이면 오늘 17시
+        // 단, 정확히 10시가 아니면 17시로 스케줄
+        if (isExactly10) {
+          // 정확히 10시면 즉시 실행 (0ms 반환)
+          return 0;
+        }
         nextScheduleHour = 17;
       } else {
         // 현재 시간이 17시 이후이면 내일 10시
+        // 단, 정확히 17시면 즉시 실행
+        if (isExactly17) {
+          return 0;
+        }
         nextScheduleHour = 10;
         nextScheduleDay = kstDay + 1;
       }
@@ -700,7 +714,33 @@ export default function TableClient({
       );
       
       const msUntilNext = nextSchedule.getTime() - currentUTC.getTime();
-      return Math.max(0, msUntilNext);
+      
+      // 음수가 나오면 (이미 지난 시간이면) 다음 스케줄로 조정
+      if (msUntilNext < 0) {
+        if (nextScheduleHour === 10) {
+          // 10시가 지났으면 17시로
+          const nextSchedule17 = new Date(
+            Date.UTC(kstYear, kstMonth, kstDay, 17 - 9, 0, 0)
+          );
+          const msUntil17 = nextSchedule17.getTime() - currentUTC.getTime();
+          if (msUntil17 < 0) {
+            // 17시도 지났으면 내일 10시로
+            const nextDay10 = new Date(
+              Date.UTC(kstYear, kstMonth, kstDay + 1, 10 - 9, 0, 0)
+            );
+            return nextDay10.getTime() - currentUTC.getTime();
+          }
+          return msUntil17;
+        } else {
+          // 17시가 지났으면 내일 10시로
+          const nextDay10 = new Date(
+            Date.UTC(kstYear, kstMonth, kstDay + 1, 10 - 9, 0, 0)
+          );
+          return nextDay10.getTime() - currentUTC.getTime();
+        }
+      }
+      
+      return msUntilNext;
     };
 
     // 다음 스케줄까지 대기 후 실행
@@ -710,19 +750,41 @@ export default function TableClient({
       const hoursUntilNext = Math.floor(minutesUntilNext / 60);
       const minsUntilNext = minutesUntilNext % 60;
       
-      console.log(`[blog-records] 다음 랭킹 업데이트까지 ${hoursUntilNext}시간 ${minsUntilNext}분 대기 (오전 10시 또는 오후 5시)`);
+      // 현재 KST 시간 확인
+      const now = new Date();
+      const kstFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Seoul',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      const currentKstTime = kstFormatter.format(now);
       
-      return setTimeout(() => {
+      console.log(`[blog-records] 현재 KST 시간: ${currentKstTime}, 다음 랭킹 업데이트까지 ${hoursUntilNext}시간 ${minsUntilNext}분 대기 (오전 10시 또는 오후 5시만 실행)`);
+      
+      // 0ms면 즉시 실행, 아니면 대기
+      if (msUntilNext === 0) {
+        console.log('[blog-records] 정확히 10시 또는 17시이므로 즉시 실행');
         void updateRankings();
-        // 실행 후 다음 스케줄 설정
-        scheduleNext();
-      }, msUntilNext);
+        // 실행 후 다음 스케줄 설정 (1분 후 다시 계산)
+        setTimeout(() => {
+          scheduleNext();
+        }, 60000); // 1분 후 다시 계산
+      } else {
+        return setTimeout(() => {
+          void updateRankings();
+          // 실행 후 다음 스케줄 설정
+          scheduleNext();
+        }, msUntilNext);
+      }
     };
 
-    let timeoutId = scheduleNext();
+    let timeoutId: NodeJS.Timeout | undefined = scheduleNext();
 
     return () => {
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [updateRankings]);
 

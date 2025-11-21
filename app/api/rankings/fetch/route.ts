@@ -253,9 +253,194 @@ function findMatch(
   return null;
 }
 
+// --- [New Helper: 개별 레코드 처리 로직 분리] ---
+
+async function processRecord(
+  record: BlogRecord,
+  request: NextRequest,
+  adminClient: any
+): Promise<{
+  id: string;
+  keyword: string;
+  ranking: number | null;
+  searchVolume: number | null;
+  success: boolean;
+  error: string | null;
+}> {
+  try {
+    console.log(`[ranking] 처리 중: ${record.keyword} (${record.id})`);
+    
+    // 1. 랭킹 가져오기
+    const entries = await fetchSmartblockEntries(record.keyword, request);
+    
+    console.log(`[ranking] ${record.keyword} (${record.id}) - 가져온 항목 수: ${entries.length}, 순위 있는 항목: ${entries.filter(e => e.rank !== null && e.rank !== undefined).length}`);
+    
+    // 내 글 찾기 (매칭 로직)
+    const recordIdentifiers = collectRecordIdentifiers(record);
+    const normalizedRecordKeyword = normalizeKeywordForComparison(record.keyword);
+    
+    let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
+    const normalizedRecordId = record.id?.trim().toLowerCase() || null;
+    
+    for (const entry of entries) {
+      // rank가 null이면 순위에 포함되지 않는 항목이므로 스킵
+      if (entry.rank === null || entry.rank === undefined) continue;
+
+      // 1) 블로그 ID가 있으면 반드시 동일해야 함
+      if (normalizedRecordId) {
+        const normalizedEntryBlogId =
+          typeof entry.blogId === 'string' && entry.blogId.trim()
+            ? entry.blogId.trim().toLowerCase()
+            : null;
+
+        if (!normalizedEntryBlogId) {
+          console.warn(
+            `[ranking] ${record.keyword} - blogId 없음으로 스킵 (recordId: ${normalizedRecordId})`
+          );
+          continue;
+        }
+
+        if (normalizedEntryBlogId !== normalizedRecordId) {
+          console.warn(
+            `[ranking] ${record.keyword} - blogId 불일치 (recordId: ${normalizedRecordId}, entry blogId: ${normalizedEntryBlogId})`
+          );
+          continue;
+        }
+      }
+
+      // 2) 키워드 체크
+      const normalizedEntryKeyword = normalizeKeywordForComparison(entry.keyword);
+      if (normalizedEntryKeyword !== normalizedRecordKeyword) {
+        console.warn(
+          `[ranking] ${record.keyword} - 키워드 불일치로 스킵 (record: ${normalizedRecordKeyword}, entry: ${normalizedEntryKeyword})`
+        );
+        continue;
+      }
+      
+      // 3) 상세 매칭
+      const entryIdentifiers = collectEntryIdentifiers(entry);
+      const matchResult = findMatch(entryIdentifiers, recordIdentifiers, normalizedRecordKeyword);
+      if (matchResult) {
+        console.log(`[ranking] ${record.keyword} (${record.id}) - 매칭 성공! 순위: ${entry.rank}, 블록: ${entry.blockTitle || 'N/A'}, blogId: ${entry.blogId}`);
+        matched = entry;
+        break;
+      }
+    }
+    
+    if (!matched) {
+      console.warn(`[ranking] ${record.keyword} (${record.id}) - 매칭 실패. 순위 있는 항목들:`, 
+        entries.filter(e => e.rank !== null && e.rank !== undefined).map(e => ({
+          rank: e.rank,
+          blogId: e.blogId,
+          title: e.title?.substring(0, 30),
+          blockTitle: e.blockTitle
+        }))
+      );
+    }
+
+    // 실제 DB에 반영될 순위
+    const rank = matched ? matched.rank : null;
+    console.log(`[ranking] 결과: ${record.keyword} -> rank: ${rank}`);
+
+    // 2. 검색량 가져오기 (병렬 처리를 위해 타임아웃 5초로 단축)
+    let searchVolume: number | null = null;
+    try {
+      const searchVolumeController = new AbortController();
+      const searchVolumeTimeout = setTimeout(() => searchVolumeController.abort(), 5000);
+      try {
+        const searchCountResult = await fetchNaverSearchCountFromKeywordTool(record.keyword);
+        clearTimeout(searchVolumeTimeout);
+        if (searchCountResult.total !== null && searchCountResult.total > 0) {
+          searchVolume = searchCountResult.total;
+        }
+      } catch (e) {
+        clearTimeout(searchVolumeTimeout);
+        // 검색량 실패는 무시 (랭킹은 계속 진행)
+      }
+    } catch (e) {
+      // 검색량 실패는 무시
+    }
+
+    // 3. 데이터베이스 업데이트
+    const updateData: any = {
+      ranking: rank,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (searchVolume !== null) {
+      updateData.search_volume = searchVolume;
+    }
+
+    const { data: updateResult, error } = await adminClient
+      .from('blog_records')
+      .update(updateData)
+      .eq('id', record.id)
+      .eq('keyword', record.keyword)
+      .select();
+
+    if (error) {
+      console.error(`[ranking] DB 업데이트 실패: ${record.id}`, error.message);
+    } else {
+      // Activity Log 기록 (성공 시)
+      if ((updateResult?.length || 0) > 0 && matched) {
+        try {
+          const matchedAny = matched as any;
+          await adminClient.from('record_activity_logs').insert({
+            action: 'update',
+            record_id: record.id,
+            keyword: record.keyword,
+            actor_name: 'crawler',
+            actor_role: 'system',
+            metadata: {
+              ranking: rank,
+              searchVolume: searchVolume,
+              link: matched?.link ?? null,
+              nickname: matched?.nickname ?? null,
+              fetchedAt: new Date().toISOString(),
+              blockTitle: matchedAny?.blockTitle ?? null,
+              blockRank: matchedAny?.blockRank ?? null,
+            },
+          });
+        } catch (logError) {
+          console.warn('[ranking] 로그 기록 실패', logError);
+        }
+      }
+    }
+
+    return {
+      id: record.id,
+      keyword: record.keyword,
+      ranking: rank,
+      searchVolume: searchVolume,
+      success: !error && (updateResult?.length || 0) > 0,
+      error: error?.message ?? null,
+    };
+  } catch (err: any) {
+    console.error(`[ranking] ${record.keyword} 처리 에러`, err);
+    return {
+      id: record.id,
+      keyword: record.keyword,
+      ranking: null,
+      searchVolume: null,
+      success: false,
+      error: err?.message ?? 'Unknown Error',
+    };
+  }
+}
+
 // --- [Main Handler] ---
 
 export async function GET(request: NextRequest) {
+  let records: BlogRecord[] = [];
+  let allResults: Array<{
+    id: string;
+    keyword: string;
+    ranking: number | null;
+    searchVolume: number | null;
+    success: boolean;
+    error: string | null;
+  }> = [];
+  
   try {
     const adminClient = createAdminClient();
     const { searchParams } = new URL(request.url);
@@ -274,8 +459,6 @@ export async function GET(request: NextRequest) {
     
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.max(1, Math.min(Number(limitParam), 200)) : undefined;
-
-    let records: BlogRecord[] = [];
 
     // DB에서 대상 레코드 가져오기
     if (idsFromQuery.size > 0) {
@@ -354,185 +537,78 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const results = [];
-    console.log(`[ranking] 시작: ${records.length}개 레코드 처리`);
+    console.log(`[ranking] 시작: 총 ${records.length}개 처리 예정`);
+    const startTime = Date.now();
 
-    for (const record of records) {
-      try {
-        console.log(`[ranking] 처리 중: ${record.keyword} (${record.id})`);
-        
-        // 1. 랭킹 가져오기 (여기서 순위가 계산되어 나옵니다)
-        const entries = await fetchSmartblockEntries(record.keyword, request);
-        
-        console.log(`[ranking] ${record.keyword} (${record.id}) - 가져온 항목 수: ${entries.length}, 순위 있는 항목: ${entries.filter(e => e.rank !== null && e.rank !== undefined).length}`);
-        
-        // 내 글 찾기 (매칭 로직)
-        const recordIdentifiers = collectRecordIdentifiers(record);
-        const normalizedRecordKeyword = normalizeKeywordForComparison(record.keyword);
-        
-        let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
-        const normalizedRecordId = record.id?.trim().toLowerCase() || null;
-        
-        for (const entry of entries) {
-          // rank가 null이면 순위에 포함되지 않는 항목이므로 스킵
-          if (entry.rank === null || entry.rank === undefined) continue;
+    // **BATCH PROCESSING (병렬 처리)**
+    const BATCH_SIZE = 5; // 한 번에 5개씩 실행 (너무 높으면 네이버 차단 위험)
 
-          // 1) 블로그 ID가 있으면 반드시 동일해야 함
-          if (normalizedRecordId) {
-            const normalizedEntryBlogId =
-              typeof entry.blogId === 'string' && entry.blogId.trim()
-                ? entry.blogId.trim().toLowerCase()
-                : null;
-
-            if (!normalizedEntryBlogId) {
-              console.warn(
-                `[ranking] ${record.keyword} - blogId 없음으로 스킵 (recordId: ${normalizedRecordId})`
-              );
-              continue;
-            }
-
-            if (normalizedEntryBlogId !== normalizedRecordId) {
-              console.warn(
-                `[ranking] ${record.keyword} - blogId 불일치 (recordId: ${normalizedRecordId}, entry blogId: ${normalizedEntryBlogId})`
-              );
-              continue;
-            }
-          }
-
-          const normalizedEntryKeyword = normalizeKeywordForComparison(entry.keyword);
-          const keywordMatches = normalizedEntryKeyword === normalizedRecordKeyword;
-          
-          if (!keywordMatches) {
-            console.warn(
-              `[ranking] ${record.keyword} - 키워드 불일치로 스킵 (record: ${normalizedRecordKeyword}, entry: ${normalizedEntryKeyword})`
-            );
-            continue;
-          }
-          
-          const entryIdentifiers = collectEntryIdentifiers(entry);
-          const matchResult = findMatch(entryIdentifiers, recordIdentifiers, normalizedRecordKeyword);
-          if (matchResult) {
-            console.log(`[ranking] ${record.keyword} (${record.id}) - 매칭 성공! 순위: ${entry.rank}, 블록: ${entry.blockTitle || 'N/A'}, blogId: ${entry.blogId}`);
-            matched = entry;
-            break;
-          }
-        }
-        
-        if (!matched) {
-          console.warn(`[ranking] ${record.keyword} (${record.id}) - 매칭 실패. 순위 있는 항목들:`, 
-            entries.filter(e => e.rank !== null && e.rank !== undefined).map(e => ({
-              rank: e.rank,
-              blogId: e.blogId,
-              title: e.title?.substring(0, 30),
-              blockTitle: e.blockTitle
-            }))
-          );
-        }
-
-        // 실제 DB에 반영될 순위
-        const rank = matched ? matched.rank : null;
-
-        console.log(`[ranking] 결과: ${record.keyword} -> rank: ${rank}`);
-
-        // 2. 검색량 가져오기
-        let searchVolume: number | null = null;
-        try {
-          const searchVolumeController = new AbortController();
-          const searchVolumeTimeout = setTimeout(() => searchVolumeController.abort(), 10000);
-          try {
-            const searchCountResult = await fetchNaverSearchCountFromKeywordTool(record.keyword);
-            clearTimeout(searchVolumeTimeout);
-            if (searchCountResult.total !== null && searchCountResult.total > 0) {
-              searchVolume = searchCountResult.total;
-            }
-          } catch (e) {
-            clearTimeout(searchVolumeTimeout);
-          }
-        } catch (e) {
-          console.warn(`[ranking] 검색량 실패: ${record.keyword}`);
-        }
-
-        // 3. 데이터베이스 업데이트
-        const updateData: any = {
-          ranking: rank, // 여기서 계산된 순위를 업데이트합니다
-          updated_at: new Date().toISOString(),
-        };
-
-        if (searchVolume !== null) {
-          updateData.search_volume = searchVolume;
-        }
-
-        const { data: updateResult, error } = await adminClient
-          .from('blog_records')
-          .update(updateData)
-          .eq('id', record.id)
-          .eq('keyword', record.keyword)
-          .select();
-
-        if (error) {
-          console.error(`[ranking] DB 업데이트 실패: ${record.id}`, error.message);
-        } else {
-          // Activity Log 기록
-          if ((updateResult?.length || 0) > 0) {
-            try {
-              const matchedAny = matched as any;
-              await adminClient.from('record_activity_logs').insert({
-                action: 'update',
-                record_id: record.id,
-                keyword: record.keyword,
-                actor_name: 'crawler',
-                actor_role: 'system',
-                metadata: {
-                  ranking: rank,
-                  searchVolume: searchVolume,
-                  link: matched?.link ?? null,
-                  nickname: matched?.nickname ?? null,
-                  fetchedAt: new Date().toISOString(),
-                  blockTitle: matchedAny?.blockTitle ?? null,
-                  blockRank: matchedAny?.blockRank ?? null,
-                },
-              });
-            } catch (logError) {
-              console.warn('[ranking] 로그 기록 실패', logError);
-            }
-          }
-        }
-
-        results.push({
-          id: record.id,
-          keyword: record.keyword,
-          ranking: rank,
-          searchVolume: searchVolume,
-          success: !error && (updateResult?.length || 0) > 0,
-          error: error?.message ?? null,
-        });
-
-        // 딜레이 (여러 건 처리 시)
-        if (records.length > 1) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-      } catch (err: any) {
-        console.error(`[ranking] ${record.keyword} 처리 에러`, err);
-        results.push({
-          id: record.id,
-          keyword: record.keyword,
-          success: false,
-          error: err?.message ?? 'Unknown Error',
-        });
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      // 5개씩 잘라서 가져옴
+      const batch = records.slice(i, i + BATCH_SIZE);
+      
+      console.log(`[Batch] ${i + 1}~${i + batch.length}번째 항목 처리 중... (총 ${records.length}개 중)`);
+      
+      // 5개를 동시에 실행 (Promise.all)
+      const batchResults = await Promise.all(
+        batch.map(record => processRecord(record, request, adminClient))
+      );
+      
+      allResults.push(...batchResults);
+      
+      // 배치 간 약간의 휴식 (서버 부하 방지 및 네이버 차단 방지)
+      if (i + BATCH_SIZE < records.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+      }
+      
+      // 진행 상황 로깅
+      const processedCount = allResults.length;
+      if (processedCount % 10 === 0 || processedCount === records.length) {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(`[ranking] 진행 상황: ${processedCount}/${records.length}개 처리 완료 (경과 시간: ${elapsed}초)`);
       }
     }
 
+    const endTime = Date.now();
+    const totalTime = Math.round((endTime - startTime) / 1000);
+    const successCount = allResults.filter(r => r.success).length;
+    
+    console.log(`[ranking] 완료: 총 ${records.length}개 중 ${allResults.length}개 처리, ${successCount}개 성공 (총 소요 시간: ${totalTime}초)`);
+    
     return NextResponse.json({
       success: true,
-      updated: results,
+      updated: allResults,
       summary: {
         total: records.length,
-        success: results.filter(r => r.success).length,
+        processed: allResults.length,
+        success: successCount,
+        totalTimeSeconds: totalTime,
       },
     });
   } catch (error: any) {
+    console.error('[ranking] 전체 처리 중 오류 발생:', error);
+    
+    // 타임아웃이나 오류가 발생해도 처리된 결과는 반환
+    if (allResults.length > 0) {
+      console.log(`[ranking] 오류 발생했지만 처리된 ${allResults.length}개 결과 반환`);
+      return NextResponse.json({
+        success: false,
+        error: error?.message ?? 'Server Error',
+        updated: allResults,
+        summary: {
+          total: records?.length || 0,
+          processed: allResults.length,
+          success: allResults.filter(r => r.success).length,
+          partial: true, // 부분 처리됨을 표시
+        },
+      });
+    }
+    
     return NextResponse.json(
-      { error: error?.message ?? 'Server Error' },
+      { 
+        error: error?.message ?? 'Server Error',
+        details: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
+      },
       { status: 500 }
     );
   }
