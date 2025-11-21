@@ -823,10 +823,12 @@ export default function AdminTable({
         return fallback ?? null;
       };
 
+      const isAdmin = userRole === 'admin' || userRole === 'super_admin' || userRole === 'owner';
+      
       const normalizedValues: {
         field: string;
         keyword: string;
-        ranking: number | null;
+        ranking?: number | null;
         searchVolume: number | null;
         title: string;
         link: string | null;
@@ -835,7 +837,7 @@ export default function AdminTable({
       } = {
         field: normalizeRequiredText(editForm.field, editingRecord.field),
         keyword: normalizeRequiredText(editForm.keyword, editingRecord.keyword),
-        ranking: parseNumberInput(editForm.ranking, editingRecord.ranking),
+        ...(isAdmin && { ranking: parseNumberInput(editForm.ranking, editingRecord.ranking) }),
         searchVolume: parseNumberInput(editForm.searchVolume, editingRecord.searchVolume),
         title: normalizeRequiredText(editForm.title, editingRecord.title),
         link: normalizeOptionalText(editForm.link ?? null, editingRecord.link),
@@ -843,13 +845,9 @@ export default function AdminTable({
         specialNote: normalizeOptionalText(editForm.specialNote ?? null, editingRecord.specialNote),
       };
 
-      const updatePayload = {
+      const updatePayload: any = {
         field: normalizedValues.field,
         keyword: normalizedValues.keyword,
-        ranking:
-          normalizedValues.ranking === null || normalizedValues.ranking === undefined
-            ? null
-            : normalizedValues.ranking,
         search_volume:
           normalizedValues.searchVolume === null || normalizedValues.searchVolume === undefined
             ? null
@@ -859,6 +857,14 @@ export default function AdminTable({
         author: normalizedValues.author ? String(normalizedValues.author) : null,
         special_note: normalizedValues.specialNote ? String(normalizedValues.specialNote) : null,
       };
+
+      // 어드민인 경우에만 ranking 업데이트
+      if (isAdmin && normalizedValues.ranking !== undefined) {
+        updatePayload.ranking =
+          normalizedValues.ranking === null || normalizedValues.ranking === undefined
+            ? null
+            : normalizedValues.ranking;
+      }
 
       const { error: updateError } = await supabase
         .from('blog_records')
@@ -922,7 +928,9 @@ export default function AdminTable({
       const updatedRecordForState: Partial<TableData> = {
         field: normalizedValues.field,
         keyword: normalizedValues.keyword,
-        ranking: normalizedValues.ranking ?? editingRecord.ranking ?? 0,
+        ranking: isAdmin && normalizedValues.ranking !== undefined 
+          ? (normalizedValues.ranking ?? editingRecord.ranking ?? 0)
+          : (editingRecord.ranking ?? 0), // 어드민이 아니면 기존 값 유지
         searchVolume: normalizedValues.searchVolume ?? editingRecord.searchVolume ?? 0,
         title: normalizedValues.title,
         link: normalizedValues.link !== null ? normalizedValues.link : undefined,
@@ -1361,16 +1369,18 @@ export default function AdminTable({
                   onChange={(e) => setEditForm({ ...editForm, keyword: e.target.value })}
                 />
               </div>
-              <div className={styles.formGroup}>
-                <label className={styles.label}>상위노출 순위</label>
-                <input
-                  type="number"
-                  className={styles.input}
-                  value={editForm.ranking?.toString() || ''}
-                  onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
-                  min="1"
-                />
-              </div>
+              {userRole === 'admin' || userRole === 'super_admin' || userRole === 'owner' ? (
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>상위노출 순위</label>
+                  <input
+                    type="number"
+                    className={styles.input}
+                    value={editForm.ranking?.toString() || ''}
+                    onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
+                    min="1"
+                  />
+                </div>
+              ) : null}
               <div className={styles.formGroup}>
                 <label className={styles.label}>검색량</label>
                 <input
