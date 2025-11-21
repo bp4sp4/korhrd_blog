@@ -312,18 +312,19 @@ export async function GET(request: NextRequest) {
         return normalized === lower || normalized.includes(lower);
       });
     } else {
-      // 파라미터가 없으면 모든 레코드 처리 (limit이 크면 모든 레코드 가져오기)
+      // 파라미터가 없으면 모든 레코드 처리 (전체 레코드 가져오기)
       const query = adminClient
         .from('blog_records')
         .select('id, keyword, link, title, author')
         .order('created_at', { ascending: false });
       
-      if (limit && limit < 10000) {
-        // limit이 10000 미만이면 제한 적용
+      if (limit && limit > 0) {
+        // limit이 명시적으로 지정된 경우에만 제한 적용
         const { data } = await query.limit(limit);
         records = data ?? [];
+        console.log(`[ranking] 제한된 레코드 조회: ${records.length}개 (limit: ${limit})`);
       } else {
-        // limit이 크거나 없으면 모든 레코드 가져오기 (페이지네이션)
+        // limit이 없으면 모든 레코드 가져오기 (페이지네이션)
         let allRecords: BlogRecord[] = [];
         let page = 0;
         const pageSize = 1000;
@@ -342,6 +343,7 @@ export async function GET(request: NextRequest) {
             allRecords = [...allRecords, ...data];
             page++;
             hasMore = data.length === pageSize;
+            console.log(`[ranking] 페이지 ${page} 조회 완료: ${data.length}개 (누적: ${allRecords.length}개)`);
           } else {
             hasMore = false;
           }
