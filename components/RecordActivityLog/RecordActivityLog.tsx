@@ -41,6 +41,32 @@ interface PaginationState {
   totalPages: number;
 }
 
+interface CrawlerStats {
+  recent: Array<{
+    id: string;
+    startedAt: string | null;
+    completedAt: string;
+    duration: number | null;
+    durationFormatted: string | null;
+    totalRecords: number;
+    processed: number;
+    success: number;
+    rankingUpdated: number;
+    searchVolumeUpdated: number;
+    totalTimeSeconds: number | null;
+  }>;
+  summary: {
+    last24Hours: {
+      totalRuns: number;
+      totalProcessed: number;
+      totalSuccess: number;
+      totalRankingUpdated: number;
+      totalSearchVolumeUpdated: number;
+      totalDuration: number;
+    };
+  };
+}
+
 export default function RecordActivityLog() {
   const [logs, setLogs] = useState<RecordActivityLogEntry[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -51,6 +77,8 @@ export default function RecordActivityLog() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [crawlerStats, setCrawlerStats] = useState<CrawlerStats | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   const ACTION_LABELS: Record<string, string> = {
     create: '신규 등록',
@@ -105,6 +133,20 @@ export default function RecordActivityLog() {
     if (!role) return '권한 정보 없음';
     return ROLE_LABELS[role] || role;
   };
+
+  const formatDuration = (seconds: number): string => {
+    if (seconds < 60) {
+      return `${seconds}초`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    if (minutes < 60) {
+      return remainingSeconds > 0 ? `${minutes}분 ${remainingSeconds}초` : `${minutes}분`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes > 0 ? `${hours}시간 ${remainingMinutes}분` : `${hours}시간`;
+  };;
 
   const buildDetailItems = (log: RecordActivityLogEntry) => {
     const items: string[] = [];
@@ -246,8 +288,27 @@ export default function RecordActivityLog() {
     [pagination.page, pagination.limit]
   );
 
+  const fetchCrawlerStats = useCallback(async () => {
+    setIsLoadingStats(true);
+    try {
+      const response = await fetch('/api/rankings/stats');
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '크롤링 통계를 불러오지 못했습니다.');
+      }
+
+      setCrawlerStats(result);
+    } catch (err: any) {
+      console.error('Failed to fetch crawler stats:', err);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchLogs();
+    fetchCrawlerStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -268,16 +329,106 @@ export default function RecordActivityLog() {
             블로그 기록의 생성 · 수정 · 삭제 내역을 시간순으로 확인할 수 있습니다.
           </p>
         </div>
-        <button
-          className={styles.refreshButton}
-          onClick={() => fetchLogs(pagination.page, pagination.limit)}
-          disabled={isLoading}
-        >
-          새로고침
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className={styles.refreshButton}
+            onClick={() => {
+              fetchLogs(pagination.page, pagination.limit);
+              fetchCrawlerStats();
+            }}
+            disabled={isLoading || isLoadingStats}
+          >
+            새로고침
+          </button>
+        </div>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {/* 크롤링 통계 섹션 */}
+      {crawlerStats && (
+        <div className={styles.statsSection}>
+          <h3 className={styles.statsTitle}>크롤링 통계</h3>
+          
+          {/* 최근 24시간 요약 */}
+          <div className={styles.summaryCard}>
+            <h4 className={styles.summaryTitle}>최근 24시간 요약</h4>
+            <div className={styles.summaryGrid}>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>실행 횟수</span>
+                <span className={styles.summaryValue}>{crawlerStats.summary.last24Hours.totalRuns}회</span>
+              </div>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>처리된 레코드</span>
+                <span className={styles.summaryValue}>{crawlerStats.summary.last24Hours.totalProcessed.toLocaleString()}개</span>
+              </div>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>성공한 레코드</span>
+                <span className={styles.summaryValue}>{crawlerStats.summary.last24Hours.totalSuccess.toLocaleString()}개</span>
+              </div>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>순위 업데이트</span>
+                <span className={styles.summaryValue}>{crawlerStats.summary.last24Hours.totalRankingUpdated.toLocaleString()}개</span>
+              </div>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>검색량 업데이트</span>
+                <span className={styles.summaryValue}>{crawlerStats.summary.last24Hours.totalSearchVolumeUpdated.toLocaleString()}개</span>
+              </div>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>총 소요 시간</span>
+                <span className={styles.summaryValue}>
+                  {formatDuration(crawlerStats.summary.last24Hours.totalDuration)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 최근 크롤링 실행 내역 */}
+          {crawlerStats.recent.length > 0 && (
+            <div className={styles.recentCard}>
+              <h4 className={styles.recentTitle}>최근 크롤링 실행 내역</h4>
+              <div className={styles.recentList}>
+                {crawlerStats.recent.map((stat) => (
+                  <div key={stat.id} className={styles.recentItem}>
+                    <div className={styles.recentHeader}>
+                      <span className={styles.recentTime}>
+                        {new Date(stat.completedAt).toLocaleString('ko-KR')}
+                      </span>
+                      {stat.durationFormatted && (
+                        <span className={styles.recentDuration}>
+                          ⏱️ {stat.durationFormatted}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.recentDetails}>
+                      <div className={styles.recentDetailRow}>
+                        <span>전체 레코드:</span>
+                        <strong>{stat.totalRecords.toLocaleString()}개</strong>
+                      </div>
+                      <div className={styles.recentDetailRow}>
+                        <span>처리:</span>
+                        <strong>{stat.processed.toLocaleString()}개</strong>
+                      </div>
+                      <div className={styles.recentDetailRow}>
+                        <span>성공:</span>
+                        <strong className={styles.successText}>{stat.success.toLocaleString()}개</strong>
+                      </div>
+                      <div className={styles.recentDetailRow}>
+                        <span>순위 업데이트:</span>
+                        <strong className={styles.updateText}>{stat.rankingUpdated.toLocaleString()}개</strong>
+                      </div>
+                      <div className={styles.recentDetailRow}>
+                        <span>검색량 업데이트:</span>
+                        <strong className={styles.updateText}>{stat.searchVolumeUpdated.toLocaleString()}개</strong>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className={styles.tableWrapper}>
         <table className={styles.table}>

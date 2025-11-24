@@ -378,33 +378,34 @@ async function processRecord(
       .eq('keyword', record.keyword)
       .select();
 
-    if (error) {
-      console.error(`[ranking] DB 업데이트 실패: ${record.id}`, error.message);
-    } else {
-      // Activity Log 기록 (성공 시)
-      if ((updateResult?.length || 0) > 0 && matched) {
-        try {
-          const matchedAny = matched as any;
-          await adminClient.from('record_activity_logs').insert({
-            action: 'update',
-            record_id: record.id,
-            keyword: record.keyword,
-            actor_name: 'crawler',
-            actor_role: 'system',
-            metadata: {
-              ranking: rank,
-              searchVolume: searchVolume,
-              link: matched?.link ?? null,
-              nickname: matched?.nickname ?? null,
-              fetchedAt: new Date().toISOString(),
-              blockTitle: matchedAny?.blockTitle ?? null,
-              blockRank: matchedAny?.blockRank ?? null,
-            },
-          });
-        } catch (logError) {
-          console.warn('[ranking] 로그 기록 실패', logError);
-        }
+    // Activity Log 기록 (매칭 성공 여부와 관계없이 크롤링 실행 추적)
+    if ((updateResult?.length || 0) > 0) {
+      try {
+        const matchedAny = matched as any;
+        await adminClient.from('record_activity_logs').insert({
+          action: 'update',
+          record_id: record.id,
+          keyword: record.keyword,
+          actor_name: 'crawler',
+          actor_role: 'system',
+          metadata: {
+            ranking: rank,
+            searchVolume: searchVolume,
+            matched: matched !== null, // 매칭 성공 여부
+            link: matched?.link ?? null,
+            nickname: matched?.nickname ?? null,
+            fetchedAt: new Date().toISOString(),
+            blockTitle: matchedAny?.blockTitle ?? null,
+            blockRank: matchedAny?.blockRank ?? null,
+            entriesCount: entries.length, // 가져온 항목 수
+            rankedEntriesCount: entries.filter(e => e.rank !== null && e.rank !== undefined).length, // 순위 있는 항목 수
+          },
+        });
+      } catch (logError) {
+        console.warn('[ranking] 로그 기록 실패', logError);
       }
+    } else if (error) {
+      console.error(`[ranking] DB 업데이트 실패: ${record.id}`, error.message);
     }
 
     return {
@@ -561,6 +562,24 @@ export async function GET(request: NextRequest) {
 
     console.log(`[ranking] 시작: 총 ${records.length}개 처리 예정`);
     const startTime = Date.now();
+    
+    // 크롤링 시작 로그 기록
+    try {
+      await adminClient.from('record_activity_logs').insert({
+        action: 'update',
+        record_id: null, // 전체 크롤링이므로 record_id 없음
+        keyword: null,
+        actor_name: 'crawler',
+        actor_role: 'system',
+        metadata: {
+          type: 'crawler_start',
+          totalRecords: records.length,
+          startedAt: new Date().toISOString(),
+        },
+      });
+    } catch (logError) {
+      console.warn('[ranking] 크롤링 시작 로그 기록 실패', logError);
+    }
 
     // **BATCH PROCESSING (병렬 처리)**
     // 배포 환경에서 안정적으로 작동하도록 배치 크기와 지연 시간 조정
@@ -640,8 +659,33 @@ export async function GET(request: NextRequest) {
     const endTime = Date.now();
     const totalTime = Math.round((endTime - startTime) / 1000);
     const successCount = allResults.filter(r => r.success).length;
+    const rankingUpdatedCount = allResults.filter(r => r.success && r.ranking !== null).length;
+    const searchVolumeUpdatedCount = allResults.filter(r => r.success && r.searchVolume !== null).length;
     
     console.log(`[ranking] 완료: 총 ${records.length}개 중 ${allResults.length}개 처리, ${successCount}개 성공 (총 소요 시간: ${totalTime}초)`);
+    
+    // 크롤링 완료 로그 기록
+    try {
+      await adminClient.from('record_activity_logs').insert({
+        action: 'update',
+        record_id: null, // 전체 크롤링이므로 record_id 없음
+        keyword: null,
+        actor_name: 'crawler',
+        actor_role: 'system',
+        metadata: {
+          type: 'crawler_complete',
+          totalRecords: records.length,
+          processed: allResults.length,
+          success: successCount,
+          rankingUpdated: rankingUpdatedCount,
+          searchVolumeUpdated: searchVolumeUpdatedCount,
+          totalTimeSeconds: totalTime,
+          completedAt: new Date().toISOString(),
+        },
+      });
+    } catch (logError) {
+      console.warn('[ranking] 크롤링 완료 로그 기록 실패', logError);
+    }
     
     return NextResponse.json({
       success: true,
