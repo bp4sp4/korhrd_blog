@@ -511,33 +511,75 @@
 .noticeBox {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  background-color: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 6px;
+  gap: 16px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
+  transition: all 0.2s ease;
 }
 
+.noticeBox:hover {
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  transform: translateY(-1px);
+}
 
+.noticeIcon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
 
 .noticeContent {
   flex: 1;
   color: #1e40af;
 }
 
-.noticeContent strong {
-  display: block;
-  margin-bottom: 4px;
-  font-weight: 600;
-  font-size: 14px;
+.noticeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
-.noticeContent p {
-  margin: 0;
+.noticeTitle {
+  font-weight: 700;
+  font-size: 15px;
   color: #1e3a8a;
+  letter-spacing: -0.3px;
+}
+
+.noticeUpdateTime {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #3b82f6;
+  background-color: rgba(255, 255, 255, 0.7);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.updateIcon {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.noticeDescription {
+  margin: 0;
+  color: #1e40af;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .modal {

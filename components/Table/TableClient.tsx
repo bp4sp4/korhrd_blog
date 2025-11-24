@@ -1022,11 +1022,19 @@ export default function TableClient({
           </div>
         </div>
       )}
- <div className={styles.noticeBox}>
+      <div className={styles.noticeBox}>
         
         <div className={styles.noticeContent}>
-          <strong>상위노출 순위 안내</strong>
-          <p>상위노출 순위는 네이버 검색 결과에서의 실제 노출 순위입니다. 인기글 블록 및 스마트블록에서의 순위를 기준으로 하며, 블로그 글과 카페 글 모두 포함됩니다.</p>
+          <div className={styles.noticeHeader}>
+            <strong className={styles.noticeTitle}>상위노출 순위 안내</strong>
+            <span className={styles.noticeUpdateTime}>
+              
+              순위 업데이트: 매일 오전 10시 및 오후 5시
+            </span>
+          </div>
+          <p className={styles.noticeDescription}>
+            상위노출 순위는 네이버 검색 결과에서의 실제 노출 순위입니다. 인기글 블록 및 스마트블록에서의 순위를 기준으로 하며, 블로그 글과 카페 글 모두 포함됩니다.
+          </p>
         </div>
       </div>
       <div className={styles.tableContainer}>

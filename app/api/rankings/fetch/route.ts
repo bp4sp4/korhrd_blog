@@ -258,7 +258,8 @@ function findMatch(
 async function processRecord(
   record: BlogRecord,
   request: NextRequest,
-  adminClient: any
+  adminClient: any,
+  retryCount: number = 0
 ): Promise<{
   id: string;
   keyword: string;
@@ -267,80 +268,111 @@ async function processRecord(
   success: boolean;
   error: string | null;
 }> {
+  const MAX_RETRIES = 2; // 최대 2회 재시도
   try {
-    console.log(`[ranking] 처리 중: ${record.keyword} (${record.id})`);
+    console.log(`[ranking] 처리 중: ${record.keyword} (${record.id})${retryCount > 0 ? ` [재시도 ${retryCount}/${MAX_RETRIES}]` : ''}`);
     
-    // 1. 랭킹 가져오기
-    const entries = await fetchSmartblockEntries(record.keyword, request);
+    // 1. 랭킹 가져오기 (재시도 로직 포함)
+    let entries: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
+    let fetchError: any = null;
     
-    console.log(`[ranking] ${record.keyword} (${record.id}) - 가져온 항목 수: ${entries.length}, 순위 있는 항목: ${entries.filter(e => e.rank !== null && e.rank !== undefined).length}`);
+    try {
+      entries = await fetchSmartblockEntries(record.keyword, request);
+    } catch (err: any) {
+      fetchError = err;
+      console.warn(`[ranking] ${record.keyword} (${record.id}) - 스마트블록 가져오기 실패:`, err?.message);
+      // 재시도 가능한 경우 재시도
+      if (retryCount < MAX_RETRIES && (err?.message?.includes('timeout') || err?.message?.includes('abort') || !err?.message)) {
+        console.log(`[ranking] ${record.keyword} (${record.id}) - 재시도 예정...`);
+        await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1))); // 재시도 간격 증가
+        return processRecord(record, request, adminClient, retryCount + 1);
+      }
+    }
     
-    // 내 글 찾기 (매칭 로직)
-    const recordIdentifiers = collectRecordIdentifiers(record);
+    const rankedEntries = entries.filter(e => e.rank !== null && e.rank !== undefined);
+    console.log(`[ranking] ${record.keyword} (${record.id}) - 가져온 항목 수: ${entries.length}, 순위 있는 항목: ${rankedEntries.length}`);
+    
+    if (rankedEntries.length === 0 && !fetchError) {
+      console.warn(`[ranking] ${record.keyword} (${record.id}) - 순위 있는 항목이 없음`);
+    }
+    
+    // 간단한 매칭 로직: 아이디와 키워드만 확인
     const normalizedRecordKeyword = normalizeKeywordForComparison(record.keyword);
+    const normalizedRecordId = record.id?.trim().toLowerCase() || null;
+    const normalizedRecordAuthor = record.author?.trim().toLowerCase() || null;
     
     let matched: Awaited<ReturnType<typeof fetchNaverRanking>>[number] | null = null;
-    const normalizedRecordId = record.id?.trim().toLowerCase() || null;
+    let matchReason = '';
     
-    for (const entry of entries) {
-      // rank가 null이면 순위에 포함되지 않는 항목이므로 스킵
-      if (entry.rank === null || entry.rank === undefined) continue;
-
-      // 1) 블로그 ID가 있으면 반드시 동일해야 함
-      if (normalizedRecordId) {
-        const normalizedEntryBlogId =
-          typeof entry.blogId === 'string' && entry.blogId.trim()
-            ? entry.blogId.trim().toLowerCase()
-            : null;
-
-        if (!normalizedEntryBlogId) {
-          console.warn(
-            `[ranking] ${record.keyword} - blogId 없음으로 스킵 (recordId: ${normalizedRecordId})`
-          );
-          continue;
-        }
-
-        if (normalizedEntryBlogId !== normalizedRecordId) {
-          console.warn(
-            `[ranking] ${record.keyword} - blogId 불일치 (recordId: ${normalizedRecordId}, entry blogId: ${normalizedEntryBlogId})`
-          );
-          continue;
-        }
-      }
-
-      // 2) 키워드 체크
+    // 1. 키워드가 일치하는 항목들 중에서
+    // 2. 아이디(blogId) 또는 닉네임(author)이 일치하는 항목 찾기
+    for (const entry of rankedEntries) {
+      // 키워드 확인
       const normalizedEntryKeyword = normalizeKeywordForComparison(entry.keyword);
       if (normalizedEntryKeyword !== normalizedRecordKeyword) {
-        console.warn(
-          `[ranking] ${record.keyword} - 키워드 불일치로 스킵 (record: ${normalizedRecordKeyword}, entry: ${normalizedEntryKeyword})`
-        );
-        continue;
+        continue; // 키워드가 다르면 스킵
       }
       
-      // 3) 상세 매칭
-      const entryIdentifiers = collectEntryIdentifiers(entry);
-      const matchResult = findMatch(entryIdentifiers, recordIdentifiers, normalizedRecordKeyword);
-      if (matchResult) {
-        console.log(`[ranking] ${record.keyword} (${record.id}) - 매칭 성공! 순위: ${entry.rank}, 블록: ${entry.blockTitle || 'N/A'}, blogId: ${entry.blogId}`);
+      // 아이디(blogId) 확인
+      const normalizedEntryBlogId = typeof entry.blogId === 'string' && entry.blogId.trim()
+        ? entry.blogId.trim().toLowerCase()
+        : null;
+      
+      // 닉네임 확인
+      const normalizedEntryNickname = entry.nickname?.trim().toLowerCase() || null;
+      
+      // 아이디 일치 또는 닉네임 일치
+      const blogIdMatch = normalizedEntryBlogId && normalizedRecordId && normalizedEntryBlogId === normalizedRecordId;
+      const nicknameMatch = normalizedEntryNickname && normalizedRecordAuthor && normalizedEntryNickname === normalizedRecordAuthor;
+      
+      if (blogIdMatch || nicknameMatch) {
         matched = entry;
-        break;
+        matchReason = blogIdMatch 
+          ? `아이디 일치 (${normalizedEntryBlogId}, 순위: ${entry.rank})`
+          : `닉네임 일치 (${normalizedEntryNickname}, 순위: ${entry.rank})`;
+        break; // 첫 번째 매칭 항목 사용
       }
     }
     
-    if (!matched) {
-      console.warn(`[ranking] ${record.keyword} (${record.id}) - 매칭 실패. 순위 있는 항목들:`, 
-        entries.filter(e => e.rank !== null && e.rank !== undefined).map(e => ({
-          rank: e.rank,
-          blogId: e.blogId,
-          title: e.title?.substring(0, 30),
-          blockTitle: e.blockTitle
-        }))
-      );
+    if (matched) {
+      console.log(`[ranking] ${record.keyword} (${record.id}) - 매칭 성공! [${matchReason}] 순위: ${matched.rank}, 블록: ${matched.blockTitle || 'N/A'}, blogId: ${matched.blogId}, nickname: ${matched.nickname || 'N/A'}`);
+    } else {
+      // 매칭 실패 시 상세 정보 로깅
+      const topEntries = rankedEntries.slice(0, 10).map(e => ({
+        rank: e.rank,
+        blogId: e.blogId,
+        nickname: e.nickname,
+        keyword: e.keyword,
+        title: e.title?.substring(0, 40),
+        blockTitle: e.blockTitle,
+        link: e.link?.substring(0, 60)
+      }));
+      console.warn(`[ranking] ${record.keyword} (${record.id}) - 매칭 실패 (미노출).`, {
+        recordId: normalizedRecordId,
+        recordAuthor: record.author?.trim().toLowerCase() || null,
+        recordKeyword: normalizedRecordKeyword,
+        topEntries,
+        totalRankedEntries: rankedEntries.length
+      });
     }
 
-    // 실제 DB에 반영될 순위
-    const rank = matched ? matched.rank : null;
-    console.log(`[ranking] 결과: ${record.keyword} -> rank: ${rank}`);
+    // 실제 DB에 반영될 순위 (entry.rank는 스마트블록에서 index + 1로 설정된 실제 순위)
+    // 매칭이 안 되면 null (미노출)로 처리
+    let rank: number | null = null;
+    
+    if (matched) {
+      // 매칭 검증: matched가 있으면 rank가 반드시 있어야 함
+      if (matched.rank === null || matched.rank === undefined) {
+        console.warn(`[ranking] ${record.keyword} (${record.id}) - 매칭되었지만 rank가 null입니다. 미노출로 처리합니다.`);
+        rank = null;
+      } else {
+        rank = matched.rank;
+      }
+      console.log(`[ranking] 결과: ${record.keyword} (${record.id}) -> rank: ${rank} (실제 순위: ${matched.rank}, 블록: ${matched.blockTitle || 'N/A'}, index: ${matched.blockRank || 'N/A'})`);
+    } else {
+      rank = null;
+      console.log(`[ranking] 결과: ${record.keyword} (${record.id}) -> rank: null (미노출 - 순위나 리스트에 없음)`);
+    }
 
     // 2. 검색량 가져오기 (병렬 처리를 위해 타임아웃 5초로 단축)
     let searchVolume: number | null = null;
@@ -392,6 +424,7 @@ async function processRecord(
             ranking: rank,
             searchVolume: searchVolume,
             matched: matched !== null, // 매칭 성공 여부
+            matchReason: matched ? matchReason : null, // 매칭 이유
             link: matched?.link ?? null,
             nickname: matched?.nickname ?? null,
             fetchedAt: new Date().toISOString(),
@@ -399,6 +432,7 @@ async function processRecord(
             blockRank: matchedAny?.blockRank ?? null,
             entriesCount: entries.length, // 가져온 항목 수
             rankedEntriesCount: entries.filter(e => e.rank !== null && e.rank !== undefined).length, // 순위 있는 항목 수
+            retryCount: retryCount, // 재시도 횟수
           },
         });
       } catch (logError) {
@@ -583,20 +617,32 @@ export async function GET(request: NextRequest) {
 
     // **BATCH PROCESSING (병렬 처리)**
     // 배포 환경에서 안정적으로 작동하도록 배치 크기와 지연 시간 조정
-    const BATCH_SIZE = 5; // 한 번에 5개씩 실행 (너무 높으면 네이버 차단 위험)
-    const BATCH_DELAY_MS = 1000; // 배치 간 1초 대기 (서버 부하 방지)
+    // 순위를 확실하게 가져오기 위해 배치 크기를 줄이고 대기 시간을 늘림
+    const BATCH_SIZE = 2; // 한 번에 2개씩 실행 (네이버 차단 방지 및 안정성 향상)
+    const BATCH_DELAY_MS = 2000; // 배치 간 2초 대기 (서버 부하 방지 및 네이버 차단 방지)
+    const ITEM_DELAY_MS = 500; // 배치 내 항목 간 0.5초 대기 (추가 안정성)
 
     for (let i = 0; i < records.length; i += BATCH_SIZE) {
-      // 5개씩 잘라서 가져옴
+      // 2개씩 잘라서 가져옴
       const batch = records.slice(i, i + BATCH_SIZE);
       
       console.log(`[Batch] ${i + 1}~${i + batch.length}번째 항목 처리 중... (총 ${records.length}개 중)`);
       
       try {
-        // 5개를 동시에 실행 (Promise.all)
-        // 각 레코드 처리 중 에러가 발생해도 다른 레코드는 계속 처리
+        // 2개를 동시에 실행하되, 각 항목 간 약간의 지연 추가
         const batchResults = await Promise.allSettled(
-          batch.map(record => processRecord(record, request, adminClient))
+          batch.map((record, idx) => {
+            // 첫 번째 항목은 즉시 실행, 나머지는 지연
+            if (idx === 0) {
+              return processRecord(record, request, adminClient);
+            } else {
+              return new Promise((resolve) => {
+                setTimeout(() => {
+                  processRecord(record, request, adminClient).then(resolve).catch(resolve);
+                }, ITEM_DELAY_MS);
+              });
+            }
+          })
         );
         
         // 성공/실패 결과 분리
@@ -641,7 +687,7 @@ export async function GET(request: NextRequest) {
         });
       }
       
-      // 배치 간 약간의 휴식 (서버 부하 방지 및 네이버 차단 방지)
+      // 배치 간 휴식 (서버 부하 방지 및 네이버 차단 방지)
       if (i + BATCH_SIZE < records.length) {
         await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
       }
