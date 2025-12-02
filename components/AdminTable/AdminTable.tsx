@@ -1056,6 +1056,7 @@ export default function AdminTable({
         {isFilterOpen && (
           <div className={styles.filterContent}>
             <div className={styles.filterGrid}>
+              {/* 첫 번째 줄: 4개 */}
               <div className={styles.filterGroup}>
                 <label className={styles.filterLabel}>아이디</label>
                 <input
@@ -1101,6 +1102,7 @@ export default function AdminTable({
                   min="1"
                 />
               </div>
+              {/* 두 번째 줄: 4개 */}
               <div className={styles.filterGroup}>
                 <label className={styles.filterLabel}>검색량 (이상)</label>
                 <input
