@@ -167,6 +167,52 @@ export default function AddRecordForm({
         throw insertError;
       }
 
+      // field를 category로 매핑하는 함수
+      const mapFieldToCategory = (field: string): string => {
+        const fieldMap: Record<string, string> = {
+          '사회복지사': '사회복지사',
+          '보육교사': '보육교사',
+          '한국어교원': '평생교육원',
+          '평생교육사': '평생교육원',
+          '편입': '대학교 편입',
+          '대학원': '대학교 편입',
+          '대졸자전형': '대학교 편입',
+          '일반과정': '학점은행제',
+          '산업기사/기사': '산업기사/기사자격증',
+          '민간자격증': '복지분야 민간자격증',
+        };
+        // 매핑이 없으면 '기타'로 분류
+        return fieldMap[field] || '기타';
+      };
+
+      // 키워드 메뉴판에 키워드 자동 저장 (field를 category로 매핑)
+      try {
+        const category = mapFieldToCategory(formData.field);
+        const keywordResponse = await fetch('/api/keywords', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            keywords: [{
+              keyword: formData.keyword.trim(),
+              blogId: null,
+              memo: null,
+              category: category,
+            }],
+          }),
+        });
+
+        if (keywordResponse.ok) {
+          console.log('[AddRecordForm] 키워드 메뉴판에 키워드 자동 저장 완료');
+        } else {
+          console.warn('[AddRecordForm] 키워드 메뉴판 저장 실패 (이미 존재할 수 있음)');
+        }
+      } catch (keywordErr) {
+        console.warn('[AddRecordForm] 키워드 메뉴판 저장 중 오류:', keywordErr);
+        // 키워드 저장 실패해도 기록 추가는 성공
+      }
+
       const metadata = {
         ranking: null, // 순위는 자동 조회됨
         searchVolume: searchVolume,

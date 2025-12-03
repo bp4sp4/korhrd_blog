@@ -24,9 +24,9 @@ type KeywordRecord = {
 
 type FetchState = 'idle' | 'loading' | 'error';
 
-type Category = '사회복지사' | '산업기사/기사자격증' | '학점은행제' | '보육교사' | '심리/상담' | '평생교육원' | '대학교 편입' | '복지분야 민간자격증' | '아동분야 민간자격증';
+type Category = '사회복지사' | '산업기사/기사자격증' | '학점은행제' | '보육교사' | '심리/상담' | '평생교육원' | '대학교 편입' | '복지분야 민간자격증' | '아동분야 민간자격증' | '학위과정' | '기타';
 
-const CATEGORIES: Category[] = ['사회복지사', '산업기사/기사자격증', '학점은행제', '보육교사', '심리/상담', '평생교육원', '대학교 편입', '복지분야 민간자격증', '아동분야 민간자격증'];
+const CATEGORIES: Category[] = ['사회복지사', '산업기사/기사자격증', '학점은행제', '보육교사', '심리/상담', '평생교육원', '대학교 편입', '복지분야 민간자격증', '아동분야 민간자격증', '학위과정', '기타'];
 
 const medalAssets: Record<number, string> = {
   1: '/goldmedal.png',
@@ -45,6 +45,9 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
   const [activeTab, setActiveTab] = useState<Category>('사회복지사');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingBlogId, setIsFetchingBlogId] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [hasImported, setHasImported] = useState(false);
+  const [isUpdatingCategories, setIsUpdatingCategories] = useState(false);
   const [searchVolumes, setSearchVolumes] = useState<Record<string, number | null>>({});
   const [fetchingSearchVolumes, setFetchingSearchVolumes] = useState<Set<string>>(new Set());
   const [searchVolumeProgress, setSearchVolumeProgress] = useState<{ total: number; completed: number; isRetrying?: boolean; retryCount?: number; retryTotal?: number } | null>(null);
@@ -203,8 +206,8 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
     const newFetching = new Set(keywordsNeedingVolume.map(item => item.keyword));
     setFetchingSearchVolumes(prev => new Set([...prev, ...newFetching]));
 
-    // 한 번에 최대 8개씩 병렬 처리
-    const batchSize = 8;
+    // 한 번에 최대 3개씩 병렬 처리 (너무 많은 동시 요청 방지)
+    const batchSize = 3;
     const batches: KeywordRecord[][] = [];
     for (let i = 0; i < keywordsNeedingVolume.length; i += batchSize) {
       batches.push(keywordsNeedingVolume.slice(i, i + batchSize));
@@ -213,50 +216,53 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
     const newVolumes: Record<string, number | null> = {};
     let failedKeywords: KeywordRecord[] = [];
 
-    // 각 키워드를 반드시 성공할 때까지 재시도하는 함수
-    const fetchWithRetry = async (item: KeywordRecord, maxRetries = 10): Promise<number | null> => {
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          const response = await fetch('/api/keywords/test-search-volume', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ keyword: item.keyword }),
-          });
+    // 각 키워드를 빠르게 가져오는 함수 (재시도 없음, 빠른 실패)
+    const fetchWithRetry = async (item: KeywordRecord): Promise<number | null> => {
+      try {
+        // 타임아웃을 포함한 fetch (5초 타임아웃)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-          if (response.ok) {
-            const data = await response.json();
-            const searchVolume = data.search_volume?.actual_search_count ?? 
-                                data.search_volume?.total_combined_ratio ?? 
-                                null;
-            return searchVolume;
-          } else {
-            // HTTP 에러 (API 제한 등) 발생
-            console.warn(`[keyword-menu] API Error for ${item.keyword}: ${response.status}`, { attempt, maxRetries });
-            if (attempt < maxRetries) {
-              const delay = getRetryDelay(attempt);
-              await new Promise((resolve) => setTimeout(resolve, delay));
-              continue; // 재시도
-            } else {
-              console.error(`[keyword-menu] 최종 실패: ${item.keyword} (${maxRetries}회 재시도 후)`);
-              return null;
-            }
-          }
-        } catch (err) {
-          // 네트워크 에러 발생
-          console.error(`[keyword-menu] Network Error for ${item.keyword}`, err, { attempt, maxRetries });
-          if (attempt < maxRetries) {
-            const delay = getRetryDelay(attempt);
-            await new Promise((resolve) => setTimeout(resolve, delay));
-            continue; // 재시도
-          } else {
-            console.error(`[keyword-menu] 최종 실패: ${item.keyword} (${maxRetries}회 재시도 후)`);
+          let response: Response;
+          try {
+            response = await fetch('/api/keywords/test-search-volume', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ keyword: item.keyword }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+        } catch (fetchError: any) {
+          clearTimeout(timeoutId);
+          if (fetchError.name === 'AbortError') {
+            // 타임아웃 시 즉시 null 반환 (재시도 없음)
             return null;
           }
+          throw fetchError;
         }
+
+        if (response.ok) {
+          let data;
+          try {
+            data = await response.json();
+          } catch (parseError) {
+            // JSON 파싱 실패 시 null 반환
+            return null;
+          }
+          const searchVolume = data.search_volume?.actual_search_count ?? 
+                              data.search_volume?.total_combined_ratio ?? 
+                              null;
+          return searchVolume;
+        } else {
+          // HTTP 에러 시 즉시 null 반환 (재시도 없음)
+          return null;
+        }
+      } catch (err: any) {
+        // 네트워크 에러 발생 시 즉시 null 반환 (재시도 없음, 조용히 처리)
+        return null;
       }
-      return null;
     };
 
     // 각 배치를 순차적으로 처리
@@ -265,7 +271,7 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       
       // 배치 내에서 병렬 처리
       const promises = batch.map(async (item) => {
-        const searchVolume = await fetchWithRetry(item, 10); // 최대 10회 재시도 (총 11회 시도)
+        const searchVolume = await fetchWithRetry(item); // 재시도 없음, 빠른 실패
         
         if (searchVolume !== null) {
           newVolumes[item.keyword] = searchVolume;
@@ -282,11 +288,11 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
         });
       });
 
-      await Promise.all(promises);
+      await Promise.allSettled(promises); // allSettled로 변경하여 일부 실패해도 계속 진행
 
-      // 배치 간 짧은 딜레이 (API 호출 제한 방지)
+      // 배치 간 딜레이 증가 (API 호출 제한 방지)
       if (batchIndex < batches.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 2000)); // 2초 딜레이
       }
     }
 
@@ -316,7 +322,7 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
           // 더 긴 딜레이 후 재시도
           await new Promise((resolve) => setTimeout(resolve, 1000 * retryRound));
           
-          const searchVolume = await fetchWithRetry(item, 10);
+          const searchVolume = await fetchWithRetry(item);
           
           if (searchVolume !== null) {
             newVolumes[item.keyword] = searchVolume;
@@ -383,35 +389,39 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
     }, 2000);
   }, [searchVolumes, fetchingSearchVolumes]);
 
-  // 키워드 목록이 로드된 후 모든 키워드의 검색량 자동 가져오기 (즉시 실행, 확실하게)
+  // 키워드 목록이 로드된 후 검색량을 백그라운드에서 점진적으로 가져오기 (지연 실행)
   useEffect(() => {
     if (keywords.length === 0 || fetchState === 'loading') return;
 
-    // 즉시 검색량 가져오기 실행
-    const activeTabKeywords = keywords.filter((item) => {
-      const itemCategory = (item.category as Category) || '사회복지사';
-      return itemCategory === activeTab;
-    });
-
-    // 클라이언트 상태에 검색량이 없거나 null인 모든 키워드 가져오기 (확실하게)
-    const keywordsWithoutVolume = activeTabKeywords.filter((item) => {
-      // 클라이언트 상태에 유효한 검색량이 있는 경우만 제외
-      const hasValidClientVolume = searchVolumes[item.keyword] !== undefined && searchVolumes[item.keyword] !== null;
-      const isFetching = fetchingSearchVolumes.has(item.keyword);
-      const wasAlreadyFetched = lastFetchedKeywordsRef.current.has(item.keyword);
-      
-      return !hasValidClientVolume && !isFetching && !wasAlreadyFetched;
-    });
-
-    if (keywordsWithoutVolume.length > 0) {
-      // 가져올 키워드들을 추적
-      keywordsWithoutVolume.forEach((item) => {
-        lastFetchedKeywordsRef.current.add(item.keyword);
+    // 1초 후에 검색량 가져오기 시작 (키워드 목록 표시를 먼저)
+    const timeoutId = setTimeout(() => {
+      const activeTabKeywords = keywords.filter((item) => {
+        const itemCategory = (item.category as Category) || '사회복지사';
+        return itemCategory === activeTab;
       });
-      
-      console.log(`[keyword-menu] 검색량 가져오기 시작: ${keywordsWithoutVolume.length}개 키워드`);
-      void fetchSearchVolumesForKeywords(keywordsWithoutVolume);
-    }
+
+      // 클라이언트 상태에 검색량이 없거나 null인 모든 키워드 가져오기
+      const keywordsWithoutVolume = activeTabKeywords.filter((item) => {
+        // 클라이언트 상태에 유효한 검색량이 있는 경우만 제외
+        const hasValidClientVolume = searchVolumes[item.keyword] !== undefined && searchVolumes[item.keyword] !== null;
+        const isFetching = fetchingSearchVolumes.has(item.keyword);
+        const wasAlreadyFetched = lastFetchedKeywordsRef.current.has(item.keyword);
+        
+        return !hasValidClientVolume && !isFetching && !wasAlreadyFetched;
+      });
+
+      if (keywordsWithoutVolume.length > 0) {
+        // 가져올 키워드들을 추적
+        keywordsWithoutVolume.forEach((item) => {
+          lastFetchedKeywordsRef.current.add(item.keyword);
+        });
+        
+        console.log(`[keyword-menu] 검색량 가져오기 시작 (백그라운드): ${keywordsWithoutVolume.length}개 키워드`);
+        void fetchSearchVolumesForKeywords(keywordsWithoutVolume);
+      }
+    }, 1000); // 1초 지연
+
+    return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keywords.length, fetchState, activeTab]);
 
@@ -687,6 +697,8 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       '대학교 편입': 0,
       '복지분야 민간자격증': 0,
       '아동분야 민간자격증': 0,
+      '학위과정': 0,
+      '기타': 0,
     };
     
     keywords.forEach((item) => {
@@ -746,6 +758,104 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
     }).length;
   }, [keywords]);
 
+  // 기존 블로그 기록에서 키워드 일괄 가져오기
+  const handleImportFromBlogRecords = async () => {
+    if (!window.confirm('블로그 기록에 등록된 모든 키워드를 키워드 메뉴판에 일괄 등록하시겠습니까?\n\n이미 존재하는 키워드는 자동으로 제외됩니다.')) {
+      return;
+    }
+
+    resetMessages();
+    setIsImporting(true);
+
+    try {
+      const response = await fetch('/api/keywords/import-from-blog-records', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json?.error ?? '키워드 일괄 등록에 실패했습니다.');
+      }
+
+      // category 분포 정보가 있으면 로그 출력
+      if (json.categoryDistribution) {
+        console.log('[keyword-menu] 키워드 category 분포:');
+        console.log('  - 새로 추가된 키워드:', json.categoryDistribution.imported);
+        console.log('  - 전체 고유 키워드:', json.categoryDistribution.total);
+      }
+
+      let successMsg = `성공적으로 완료되었습니다. ${json.imported}개의 키워드가 등록되었습니다.${json.skipped > 0 ? ` (${json.skipped}개는 이미 존재하여 제외됨)` : ''}`;
+      
+      // category 분포 정보가 있으면 메시지에 추가
+      if (json.categoryDistribution?.imported) {
+        const categoryList = Object.entries(json.categoryDistribution.imported)
+          .map(([cat, count]) => `${cat}: ${count}개`)
+          .join(', ');
+        successMsg += `\n\n카테고리별 분포: ${categoryList}`;
+      }
+
+      setSuccessMessage(successMsg);
+      await loadKeywords();
+    } catch (err: any) {
+      console.error('[keyword-menu] import failed', err);
+      setError(err?.message ?? '키워드 일괄 등록에 실패했습니다.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // 기존 키워드들의 category를 키워드 내용 기반으로 업데이트
+  const handleUpdateCategories = async () => {
+    if (!window.confirm('모든 키워드의 category를 키워드 내용을 분석해서 자동으로 업데이트하시겠습니까?\n\n예: "어린이집 교사 급여" → "아동분야 민간자격증"')) {
+      return;
+    }
+
+    resetMessages();
+    setIsUpdatingCategories(true);
+
+    try {
+      const response = await fetch('/api/keywords/update-categories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json?.error ?? '키워드 category 업데이트에 실패했습니다.');
+      }
+
+      // category 분포 정보가 있으면 로그 출력
+      if (json.categoryDistribution) {
+        console.log('[keyword-menu] 업데이트 후 category 분포:', json.categoryDistribution);
+      }
+
+      let successMsg = `성공적으로 완료되었습니다. ${json.updated}개의 키워드 category가 업데이트되었습니다.${json.unchanged > 0 ? ` (${json.unchanged}개는 이미 올바른 category)` : ''}`;
+      
+      // category 분포 정보가 있으면 메시지에 추가
+      if (json.categoryDistribution) {
+        const categoryList = Object.entries(json.categoryDistribution)
+          .map(([cat, count]) => `${cat}: ${count}개`)
+          .join(', ');
+        successMsg += `\n\n카테고리별 분포: ${categoryList}`;
+      }
+
+      setSuccessMessage(successMsg);
+      await loadKeywords();
+    } catch (err: any) {
+      console.error('[keyword-menu] update categories failed', err);
+      setError(err?.message ?? '키워드 category 업데이트에 실패했습니다.');
+    } finally {
+      setIsUpdatingCategories(false);
+    }
+  };
+
   // 사용 가능한 탭 (키워드가 있는 탭만)
   const availableTabs = useMemo(() => {
     return CATEGORIES.filter((category) => categoryCounts[category] > 0);
@@ -774,7 +884,25 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
       </header>
 
       <div className={styles.actions}>
-        
+        <button
+          type="button"
+          onClick={handleUpdateCategories}
+          disabled={isUpdatingCategories || isSubmitting}
+          className={styles.importButton}
+          style={{
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            padding: '10px 20px',
+            borderRadius: '6px',
+            border: 'none',
+            cursor: isUpdatingCategories || isSubmitting ? 'not-allowed' : 'pointer',
+            opacity: isUpdatingCategories || isSubmitting ? 0.6 : 1,
+            fontWeight: 600,
+            marginRight: '12px',
+          }}
+        >
+          {isUpdatingCategories ? '업데이트 중...' : '키워드 Category 자동 업데이트'}
+        </button>
         {updatableKeywordsCount > 0 && (
           <button
             type="button"

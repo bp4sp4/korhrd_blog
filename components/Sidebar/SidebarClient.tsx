@@ -104,6 +104,20 @@ export default function SidebarClient({ isAdmin, isOwner = false }: SidebarClien
           </a>
         </div>
 
+        <div className={styles.navSection}>
+          <a
+            href="/keyword/bulk"
+            className={`${styles.navItem} ${pathname === '/keyword/bulk' ? styles.active : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              handleNavClick('/keyword/bulk');
+            }}
+          >
+            <TrendingUp size={20} className={styles.navIcon} />
+            <span className={styles.navText}>키워드 대량조회</span>
+          </a>
+        </div>
+
         <div className={styles.navSectionHeader}>랭킹</div>
         <div className={styles.navSection}>
           <a
