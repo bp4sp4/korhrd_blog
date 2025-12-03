@@ -89,24 +89,85 @@ export async function POST(request: NextRequest) {
               ? searchVolumeResult.actualSearchCount
               : searchCountResult.total;
 
-          // 월 발행수 가져오기 (네이버 검색 API)
+          // 월 발행수 가져오기 (네이버 검색 API - 최근 1개월 내 발행된 포스트만)
           let monthlyPublicationCount: number | null = null;
           try {
-            const searchResponse = await fetch(
-              `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(keyword)}&display=1&start=1&sort=sim`,
-              {
-                headers: {
-                  'X-Naver-Client-Id': clientId,
-                  'X-Naver-Client-Secret': clientSecret,
-                },
-                cache: 'no-store',
-              }
-            );
+            // 최근 1개월 내 발행된 포스트만 가져오기 위해 날짜 정렬 사용
+            // 최대 1000개까지 조회하여 최근 1개월 내 포스트 수 계산
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+            const oneMonthAgoStr = oneMonthAgo.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD 형식
+            
+            let totalCount = 0;
+            let start = 1;
+            const display = 100; // 한 번에 100개씩 조회
+            let hasMore = true;
+            let recentCount = 0; // 최근 1개월 내 포스트 수
+            
+            // 최대 1000개까지 조회 (네이버 API 제한)
+            while (hasMore && start <= 1000) {
+              const searchResponse = await fetch(
+                `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(keyword)}&display=${display}&start=${start}&sort=date`,
+                {
+                  headers: {
+                    'X-Naver-Client-Id': clientId,
+                    'X-Naver-Client-Secret': clientSecret,
+                  },
+                  cache: 'no-store',
+                }
+              );
 
-            if (searchResponse.ok) {
-              const searchData = await searchResponse.json();
-              monthlyPublicationCount = searchData.total || null;
+              if (searchResponse.ok) {
+                const searchData = await searchResponse.json();
+                const items = searchData.items || [];
+                
+                if (items.length === 0) {
+                  hasMore = false;
+                  break;
+                }
+                
+                // 최근 1개월 내 발행된 포스트만 카운트
+                for (const item of items) {
+                  const postDate = item.postdate; // YYYYMMDD 형식
+                  if (postDate && postDate >= oneMonthAgoStr) {
+                    recentCount++;
+                  } else {
+                    // 날짜가 1개월 이전이면 더 이상 조회할 필요 없음
+                    hasMore = false;
+                    break;
+                  }
+                }
+                
+                // 다음 페이지가 있는지 확인
+                if (items.length < display || start + display > 1000) {
+                  hasMore = false;
+                } else {
+                  start += display;
+                }
+                
+                // 첫 번째 응답에서 전체 수 확인
+                if (start === 1) {
+                  totalCount = searchData.total || 0;
+                }
+              } else {
+                hasMore = false;
+                break;
+              }
+              
+              // API 호출 제한 방지를 위한 딜레이
+              if (hasMore) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+              }
             }
+            
+            // 최근 1개월 내 포스트 수가 있으면 사용, 없으면 null
+            monthlyPublicationCount = recentCount > 0 ? recentCount : null;
+            
+            console.log(`[bulk] ${keyword} - 월 발행수 계산:`, {
+              totalCount,
+              recentCount,
+              monthlyPublicationCount,
+            });
           } catch (error) {
             console.error(`[bulk] 월 발행수 조회 오류 (${keyword}):`, error);
           }

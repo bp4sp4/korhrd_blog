@@ -840,7 +840,7 @@ export default function AdminTable({
       };
 
       const isAdmin = userRole === 'admin' || userRole === 'super_admin' || userRole === 'owner';
-      
+
       const normalizedValues: {
         field: string;
         keyword: string;
@@ -1388,16 +1388,16 @@ export default function AdminTable({
                 />
               </div>
               {userRole === 'admin' || userRole === 'super_admin' || userRole === 'owner' ? (
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>상위노출 순위</label>
-                  <input
-                    type="number"
-                    className={styles.input}
-                    value={editForm.ranking?.toString() || ''}
-                    onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
-                    min="1"
-                  />
-                </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>상위노출 순위</label>
+                <input
+                  type="number"
+                  className={styles.input}
+                  value={editForm.ranking?.toString() || ''}
+                  onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
+                  min="1"
+                />
+              </div>
               ) : null}
               <div className={styles.formGroup}>
                 <label className={styles.label}>검색량</label>

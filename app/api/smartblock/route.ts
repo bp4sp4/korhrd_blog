@@ -143,11 +143,11 @@ async function scrapeSmartBlocks(
       
       try {
         browser = await playwrightChromium.connect({
-          wsEndpoint: browserlessEndpoint,
+            wsEndpoint: browserlessEndpoint,
           timeout: connectTimeout,
         });
-        console.log('[smartblock] Browserless 연결 성공');
-      } catch (error: any) {
+          console.log('[smartblock] Browserless 연결 성공');
+        } catch (error: any) {
         console.error('[smartblock] Browserless 연결 실패:', error?.message);
         throw new Error(`Browserless 연결 실패: ${error?.message || '알 수 없는 오류'}`);
       }
@@ -157,8 +157,8 @@ async function scrapeSmartBlocks(
       // 로컬 환경: 일반 playwright 사용
       const browserType = isVercel ? playwrightChromium : await getLocalChromium();
       browser = await browserType.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'] as string[],
       });
       console.log('[smartblock] 로컬 브라우저 실행 성공');
     }
@@ -204,18 +204,18 @@ async function scrapeSmartBlocks(
     }
 
     // 스크롤 로직
-    await page.evaluate(() => {
-      window.scrollTo(0, 300);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    await page.evaluate(() => {
-      window.scrollTo(0, 900);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    await page.evaluate(() => {
-      window.scrollTo(0, 1500);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+      await page.evaluate(() => {
+        window.scrollTo(0, 300);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await page.evaluate(() => {
+        window.scrollTo(0, 900);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await page.evaluate(() => {
+        window.scrollTo(0, 1500);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const selectors = [
       '.fds-ugc-block-mod',

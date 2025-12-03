@@ -330,16 +330,16 @@ export default function RecordActivityLog() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            className={styles.refreshButton}
+        <button
+          className={styles.refreshButton}
             onClick={() => {
               fetchLogs(pagination.page, pagination.limit);
               fetchCrawlerStats();
             }}
             disabled={isLoading || isLoadingStats}
-          >
-            새로고침
-          </button>
+        >
+          새로고침
+        </button>
         </div>
       </div>
 

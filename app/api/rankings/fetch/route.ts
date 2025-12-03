@@ -539,9 +539,9 @@ export async function GET(request: NextRequest) {
       if (limit && limit > 0) {
         // limit이 명시적으로 지정된 경우에만 제한 적용
         const { data } = await query.limit(limit);
-        records = data ?? [];
+      records = data ?? [];
         console.log(`[ranking] 제한된 레코드 조회: ${records.length}개 (limit: ${limit})`);
-      } else {
+          } else {
         // limit이 없으면 모든 레코드 가져오기 (페이지네이션)
         // 배포 환경에서 안정적으로 작동하도록 각 페이지마다 새로운 쿼리 생성
         let allRecords: BlogRecord[] = [];
@@ -577,7 +577,7 @@ export async function GET(request: NextRequest) {
               }
             } else {
               hasMore = false;
-            }
+          }
           } catch (pageError: any) {
             console.error(`[ranking] 페이지 ${page + 1} 처리 중 예외 발생:`, pageError?.message);
             // 예외 발생 시 이미 가져온 데이터는 유지하고 중단
@@ -596,21 +596,21 @@ export async function GET(request: NextRequest) {
 
     console.log(`[ranking] 시작: 총 ${records.length}개 처리 예정`);
     const startTime = Date.now();
-    
+            
     // 크롤링 시작 로그 기록
-    try {
-      await adminClient.from('record_activity_logs').insert({
-        action: 'update',
+            try {
+              await adminClient.from('record_activity_logs').insert({
+                action: 'update',
         record_id: null, // 전체 크롤링이므로 record_id 없음
         keyword: null,
-        actor_name: 'crawler',
-        actor_role: 'system',
-        metadata: {
+                actor_name: 'crawler',
+                actor_role: 'system',
+                metadata: {
           type: 'crawler_start',
           totalRecords: records.length,
           startedAt: new Date().toISOString(),
-        },
-      });
+                },
+              });
     } catch (logError) {
       console.warn('[ranking] 크롤링 시작 로그 기록 실패', logError);
     }
@@ -662,13 +662,13 @@ export async function GET(request: NextRequest) {
             const record = batch[idx];
             if (record) {
               allResults.push({
-                id: record.id,
-                keyword: record.keyword,
+          id: record.id,
+          keyword: record.keyword,
                 ranking: null,
                 searchVolume: null,
                 success: false,
                 error: f.error,
-              });
+        });
             }
           });
         }
@@ -677,16 +677,16 @@ export async function GET(request: NextRequest) {
         // 배치 전체가 실패해도 다음 배치는 계속 처리
         batch.forEach(record => {
           allResults.push({
-            id: record.id,
-            keyword: record.keyword,
-            ranking: null,
-            searchVolume: null,
-            success: false,
+          id: record.id,
+          keyword: record.keyword,
+          ranking: null,
+          searchVolume: null,
+          success: false,
             error: batchError?.message || 'Batch processing error',
           });
         });
       }
-      
+
       // 배치 간 휴식 (서버 부하 방지 및 네이버 차단 방지)
       if (i + BATCH_SIZE < records.length) {
         await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
@@ -728,11 +728,11 @@ export async function GET(request: NextRequest) {
           totalTimeSeconds: totalTime,
           completedAt: new Date().toISOString(),
         },
-      });
+    });
     } catch (logError) {
       console.warn('[ranking] 크롤링 완료 로그 기록 실패', logError);
     }
-    
+
     return NextResponse.json({
       success: true,
       updated: allResults,
@@ -784,24 +784,24 @@ async function fetchSmartblockEntries(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     
-    const response = await fetch(smartblockUrl, {
-      method: 'POST',
+      const response = await fetch(smartblockUrl, {
+        method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({ keyword }),
-      signal: controller.signal,
-    });
+        cache: 'no-store',
+        body: JSON.stringify({ keyword }),
+        signal: controller.signal,
+      });
 
-    clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
+      if (!response.ok) {
       console.warn(`[ranking] 스마트블록 API 실패: ${response.status}`);
-      return [];
-    }
+        return [];
+      }
 
-    const json = await response.json();
-    const smartBlocks = Array.isArray(json.smartBlocks) ? json.smartBlocks : [];
-    const results: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
+      const json = await response.json();
+      const smartBlocks = Array.isArray(json.smartBlocks) ? json.smartBlocks : [];
+      const results: Awaited<ReturnType<typeof fetchNaverRanking>> = [];
 
     const extractBlogId = (value?: string | null): string | null => {
       if (!value) return null;
@@ -830,7 +830,7 @@ async function fetchSmartblockEntries(
     }
     
     const smartBlockBlocks = smartBlocks.filter((block: any) => block?.title && !block.title.includes('일반 검색 결과'));
-    
+
     // 2. 모든 스마트블록 처리 (각 블록의 항목에 순위 부여)
     // 인기글 블록이 있으면 우선 처리, 그 다음 다른 블록들 처리
     const seenEntries = new Map<string, { rank: number; blockTitle: string; blockRank: number }>();
@@ -896,7 +896,7 @@ async function fetchSmartblockEntries(
                        extractBlogId(item?.link);
         const nicknameRaw = item?.author || item?.nickname;
         const nickname = nicknameRaw ? nicknameRaw.trim() : undefined;
-        
+
         if (!blogId && !nickname) return;
 
         const title = typeof item?.title === 'string' ? item.title.trim() : '';
@@ -917,13 +917,13 @@ async function fetchSmartblockEntries(
             blockRank: actualRank,
           });
 
-          results.push({
-            keyword,
-            blogId: blogId ?? '',
-            title,
-            link,
+        results.push({
+          keyword,
+          blogId: blogId ?? '',
+          title,
+          link,
             rank: actualRank, // 이 블록의 순위 부여
-            nickname,
+          nickname,
             snippet: item?.content,
             blockTitle: block.title,
             blockRank: actualRank,
@@ -939,7 +939,7 @@ async function fetchSmartblockEntries(
       });
     }
 
-    return results;
+      return results;
   } catch (fetchError) {
     console.error(`[ranking] 스마트블록 에러: ${keyword}`, fetchError);
     return [];

@@ -603,9 +603,9 @@ export default function TableClient({
           // 504 타임아웃 또는 다른 서버 에러 처리
           if (response.status === 504) {
             console.error('[blog-records] 랭킹 업데이트 타임아웃: 서버 응답 시간이 초과되었습니다.');
-            return;
-          }
-          
+          return;
+        }
+
           // JSON 파싱 시도 (에러 응답도 JSON일 수 있음)
           let errorMessage = `서버 오류 (${response.status})`;
           try {
@@ -631,13 +631,13 @@ export default function TableClient({
         } catch (parseError) {
           console.error('[blog-records] 랭킹 업데이트 응답 파싱 실패:', parseError);
           return;
-        }
+            }
 
-        // API 응답에서 실제 업데이트된 항목 확인
-        const updates = Array.isArray(result?.updated) ? result.updated : [];
-        const successCount = updates.filter((u: any) => u.success && (u.ranking !== null || u.searchVolume !== null)).length;
-        const rankingUpdated = updates.filter((u: any) => u.success && u.ranking !== null).length;
-        const searchVolumeUpdated = updates.filter((u: any) => u.success && u.searchVolume !== null).length;
+            // API 응답에서 실제 업데이트된 항목 확인
+            const updates = Array.isArray(result?.updated) ? result.updated : [];
+            const successCount = updates.filter((u: any) => u.success && (u.ranking !== null || u.searchVolume !== null)).length;
+            const rankingUpdated = updates.filter((u: any) => u.success && u.ranking !== null).length;
+            const searchVolumeUpdated = updates.filter((u: any) => u.success && u.searchVolume !== null).length;
         const totalProcessed = result?.summary?.total || updates.length;
 
         console.log(`[blog-records] 전체 업데이트 완료: 총 ${totalProcessed}개 처리, ${successCount}개 성공 (랭킹: ${rankingUpdated}, 검색량: ${searchVolumeUpdated})`);
@@ -793,14 +793,14 @@ export default function TableClient({
       // 0ms면 즉시 실행, 아니면 대기
       if (msUntilNext === 0) {
         console.log('[blog-records] 정확히 10시 또는 17시이므로 즉시 실행');
-        void updateRankings();
+      void updateRankings();
         // 실행 후 다음 스케줄 설정 (1분 후 다시 계산)
         setTimeout(() => {
           scheduleNext();
         }, 60000); // 1분 후 다시 계산
       } else {
         return setTimeout(() => {
-          void updateRankings();
+        void updateRankings();
           // 실행 후 다음 스케줄 설정
           scheduleNext();
         }, msUntilNext);
@@ -811,7 +811,7 @@ export default function TableClient({
 
     return () => {
       if (timeoutId) {
-        clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
       }
     };
   }, [updateRankings]);
@@ -1221,16 +1221,16 @@ export default function TableClient({
                 />
               </div>
               {userRole === 'admin' || userRole === 'super_admin' || userRole === 'owner' ? (
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>상위노출 순위</label>
-                  <input
-                    type="number"
-                    className={styles.input}
-                    value={editForm.ranking?.toString() || ''}
-                    onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
-                    min="1"
-                  />
-                </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>상위노출 순위</label>
+                <input
+                  type="number"
+                  className={styles.input}
+                  value={editForm.ranking?.toString() || ''}
+                  onChange={(e) => setEditForm({ ...editForm, ranking: e.target.value ? parseInt(e.target.value) || 0 : 0 })}
+                  min="1"
+                />
+              </div>
               ) : null}
               <div className={styles.formGroup}>
                 <label className={styles.label}>검색량</label>
