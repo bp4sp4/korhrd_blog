@@ -226,13 +226,13 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
           let response: Response;
           try {
             response = await fetch('/api/keywords/test-search-volume', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ keyword: item.keyword }),
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ keyword: item.keyword }),
               signal: controller.signal,
-            });
+          });
             clearTimeout(timeoutId);
         } catch (fetchError: any) {
           clearTimeout(timeoutId);
@@ -243,7 +243,7 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
           throw fetchError;
         }
 
-        if (response.ok) {
+          if (response.ok) {
           let data;
           try {
             data = await response.json();
@@ -251,18 +251,18 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
             // JSON 파싱 실패 시 null 반환
             return null;
           }
-          const searchVolume = data.search_volume?.actual_search_count ?? 
-                              data.search_volume?.total_combined_ratio ?? 
-                              null;
-          return searchVolume;
-        } else {
+            const searchVolume = data.search_volume?.actual_search_count ?? 
+                                data.search_volume?.total_combined_ratio ?? 
+                                null;
+            return searchVolume;
+          } else {
           // HTTP 에러 시 즉시 null 반환 (재시도 없음)
-          return null;
-        }
+              return null;
+            }
       } catch (err: any) {
         // 네트워크 에러 발생 시 즉시 null 반환 (재시도 없음, 조용히 처리)
-        return null;
-      }
+            return null;
+          }
     };
 
     // 각 배치를 순차적으로 처리
@@ -395,30 +395,30 @@ export default function KeywordMenu({ isAdmin = false }: { isAdmin?: boolean }) 
 
     // 1초 후에 검색량 가져오기 시작 (키워드 목록 표시를 먼저)
     const timeoutId = setTimeout(() => {
-      const activeTabKeywords = keywords.filter((item) => {
-        const itemCategory = (item.category as Category) || '사회복지사';
-        return itemCategory === activeTab;
-      });
+    const activeTabKeywords = keywords.filter((item) => {
+      const itemCategory = (item.category as Category) || '사회복지사';
+      return itemCategory === activeTab;
+    });
 
       // 클라이언트 상태에 검색량이 없거나 null인 모든 키워드 가져오기
-      const keywordsWithoutVolume = activeTabKeywords.filter((item) => {
-        // 클라이언트 상태에 유효한 검색량이 있는 경우만 제외
-        const hasValidClientVolume = searchVolumes[item.keyword] !== undefined && searchVolumes[item.keyword] !== null;
-        const isFetching = fetchingSearchVolumes.has(item.keyword);
-        const wasAlreadyFetched = lastFetchedKeywordsRef.current.has(item.keyword);
-        
-        return !hasValidClientVolume && !isFetching && !wasAlreadyFetched;
-      });
+    const keywordsWithoutVolume = activeTabKeywords.filter((item) => {
+      // 클라이언트 상태에 유효한 검색량이 있는 경우만 제외
+      const hasValidClientVolume = searchVolumes[item.keyword] !== undefined && searchVolumes[item.keyword] !== null;
+      const isFetching = fetchingSearchVolumes.has(item.keyword);
+      const wasAlreadyFetched = lastFetchedKeywordsRef.current.has(item.keyword);
+      
+      return !hasValidClientVolume && !isFetching && !wasAlreadyFetched;
+    });
 
-      if (keywordsWithoutVolume.length > 0) {
-        // 가져올 키워드들을 추적
-        keywordsWithoutVolume.forEach((item) => {
-          lastFetchedKeywordsRef.current.add(item.keyword);
-        });
-        
+    if (keywordsWithoutVolume.length > 0) {
+      // 가져올 키워드들을 추적
+      keywordsWithoutVolume.forEach((item) => {
+        lastFetchedKeywordsRef.current.add(item.keyword);
+      });
+      
         console.log(`[keyword-menu] 검색량 가져오기 시작 (백그라운드): ${keywordsWithoutVolume.length}개 키워드`);
-        void fetchSearchVolumesForKeywords(keywordsWithoutVolume);
-      }
+      void fetchSearchVolumesForKeywords(keywordsWithoutVolume);
+    }
     }, 1000); // 1초 지연
 
     return () => clearTimeout(timeoutId);
